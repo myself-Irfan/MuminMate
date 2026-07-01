@@ -30,7 +30,7 @@ class AuthService:
 
     async def refresh(self, refresh_token: str) -> tuple[str, str]:
         token_hash = hash_token(refresh_token)
-        return await _RefreshFlow(self._repo).execute(refresh_token, token_hash)
+        return await _RefreshFlow(self._repo).execute(token_hash)
 
     async def logout(self, refresh_token: str) -> None:
         await self._repo.delete_refresh_token(hash_token(refresh_token))

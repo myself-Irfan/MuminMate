@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from backend.auth.entities import User
 from backend.auth.repository import SQLAlchemyUserRepository
-from backend.auth.services import AuthService
+from backend.auth.services.auth_service import AuthService
 from backend.database import DbSession
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")

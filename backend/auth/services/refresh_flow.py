@@ -11,7 +11,7 @@ class _RefreshFlow:
     def __init__(self, repo: UserRepository) -> None:
         self._repo = repo
 
-    async def execute(self, refresh_token: str, token_hash: str) -> tuple[str, str]:
+    async def execute(self, token_hash: str) -> tuple[str, str]:
         existing = await self._fetch_refresh_token(token_hash)
         return await self._rotate_tokens(existing, token_hash)
 
@@ -25,6 +25,7 @@ class _RefreshFlow:
         new_access_token = create_access_token(existing.user_id)
         new_refresh_token, new_token_hash = create_refresh_token()
         new_expires_at = datetime.now(timezone.utc) + settings.refresh_token_expire
+
         rotated = await self._repo.rotate_refresh_token(
             old_hash=old_hash,
             user_id=existing.user_id,
@@ -33,4 +34,5 @@ class _RefreshFlow:
         )
         if not rotated:
             raise InvalidTokenException()
+
         return new_access_token, new_refresh_token

@@ -61,7 +61,7 @@ class LoggingContextMiddleware(BaseHTTPMiddleware):
         try:
             payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
             structlog.contextvars.bind_contextvars(user_id=payload.get("sub"))
-        except Exception:
+        except jwt.InvalidTokenError:
             pass
 
     @staticmethod

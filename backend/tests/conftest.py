@@ -1,5 +1,3 @@
-import os
-
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -7,15 +5,11 @@ from sqlalchemy.pool import NullPool
 
 # ensure all entity tables are registered with Base.metadata before create_all
 import backend.auth.entities  # noqa: F401
+from backend.config import settings
 from backend.database import Base, get_db
 from backend.main import app
 
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL",
-    "postgresql+asyncpg://muminmate:muminmate@localhost:5433/muminmate_test",
-)
-
-_engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
+_engine = create_async_engine(settings.test_database_url, poolclass=NullPool)
 _TestSession = async_sessionmaker(_engine, expire_on_commit=False)
 
 

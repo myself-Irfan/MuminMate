@@ -21,12 +21,16 @@ def hash_password(password: str) -> str:
     return _pwd_hasher.hash(password)
 
 
-def verify_password(plain: str, hashed: str) -> tuple[bool, bool]:
+def verify_password(plain: str, hashed: str) -> bool:
     try:
         _pwd_hasher.verify(hashed, plain)
-        return True, _pwd_hasher.check_needs_rehash(hashed)
+        return True
     except VerifyMismatchError:
-        return False, False
+        return False
+
+
+def password_needs_rehash(hashed: str) -> bool:
+    return _pwd_hasher.check_needs_rehash(hashed)
 
 
 def hash_token(token: str) -> str:

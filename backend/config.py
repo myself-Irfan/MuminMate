@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     db_host: str = Field()
     db_port: int = Field()
     db_name: str = Field()
+    test_database_url: str = Field(default="")
 
     @property
     def db_url(self) -> str:
