@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}MuminMate — Login{% endblock %}
+
+{% block content %}
+<div class="auth-page d-flex align-items-center justify-content-center min-vh-100">
+  <div class="auth-card card shadow-sm p-4">
+    <div class="text-center mb-4">
+      <h1 class="brand-title">مؤمن</h1>
+      <p class="brand-subtitle">MuminMate</p>
+      <p class="text-muted small">Islamic knowledge rooted in Quran and Sunnah</p>
+    </div>
+
+    <div id="alert"></div>
+
+    <form id="login-form" novalidate>
+      <div class="mb-3">
+        <label for="email" class="form-label">Email</label>
+        <input type="email" class="form-control" id="email" placeholder="you@example.com" required autofocus>
+        <div class="invalid-feedback"></div>
+      </div>
+      <div class="mb-3">
+        <label for="password" class="form-label">Password</label>
+        <input type="password" class="form-control" id="password" placeholder="••••••••" required>
+        <div class="invalid-feedback"></div>
+      </div>
+      <button type="submit" class="btn btn-primary w-100" id="submit-btn">Sign in</button>
+    </form>
+
+    <p class="text-center text-muted small mt-3 mb-0">
+      No account? <a href="/register" class="link-primary">Create one</a>
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/login.js"></script>
+{% endblock %}

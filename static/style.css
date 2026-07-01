@@ -1,0 +1,57 @@
+:root {
+  --mm-green: #1a6b3c;
+  --mm-green-dark: #134f2d;
+  --mm-gold: #c5a028;
+  --mm-bg: #f4f6f4;
+}
+
+body {
+  background-color: var(--mm-bg);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Bootstrap overrides */
+.btn-primary {
+  background-color: var(--mm-green);
+  border-color: var(--mm-green);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--mm-green-dark);
+  border-color: var(--mm-green-dark);
+}
+
+.form-control:focus {
+  border-color: var(--mm-green);
+  box-shadow: 0 0 0 0.2rem rgba(26, 107, 60, 0.2);
+}
+
+.link-primary {
+  color: var(--mm-green);
+}
+
+.link-primary:hover {
+  color: var(--mm-green-dark);
+}
+
+/* Auth pages */
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 12px;
+}
+
+.brand-title {
+  font-size: 2.5rem;
+  color: var(--mm-green);
+  margin-bottom: 0;
+}
+
+.brand-subtitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--mm-gold);
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}

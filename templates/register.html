@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}MuminMate — Register{% endblock %}
+
+{% block content %}
+<div class="auth-page d-flex align-items-center justify-content-center min-vh-100">
+  <div class="auth-card card shadow-sm p-4">
+    <div class="text-center mb-4">
+      <h1 class="brand-title">مؤمن</h1>
+      <p class="brand-subtitle">MuminMate</p>
+      <p class="text-muted small">Create your account</p>
+    </div>
+
+    <div id="alert"></div>
+
+    <form id="register-form" novalidate>
+      <div class="mb-3">
+        <label for="email" class="form-label">Email</label>
+        <input type="email" class="form-control" id="email" placeholder="you@example.com" required autofocus>
+        <div class="invalid-feedback"></div>
+      </div>
+      <div class="mb-3">
+        <label for="username" class="form-label">Username</label>
+        <input type="text" class="form-control" id="username" placeholder="your name" required>
+        <div class="invalid-feedback"></div>
+      </div>
+      <div class="mb-3">
+        <label for="password" class="form-label">Password</label>
+        <input type="password" class="form-control" id="password" placeholder="••••••••" required>
+        <div class="form-text">At least 8 characters.</div>
+        <div class="invalid-feedback"></div>
+      </div>
+      <button type="submit" class="btn btn-primary w-100" id="submit-btn">Create account</button>
+    </form>
+
+    <p class="text-center text-muted small mt-3 mb-0">
+      Already have an account? <a href="/login" class="link-primary">Sign in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/register.js"></script>
+{% endblock %}
