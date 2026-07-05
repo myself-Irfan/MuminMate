@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Cookie, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 
 from backend.auth.dependencies import CurrentUser, DependsAuthService
 from backend.auth.exceptions import AccountLockedException, AuthException
@@ -25,12 +25,14 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 @router.post(
     "/register",
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     summary="Create a new account",
     response_model=RegisterOut,
     responses={
-        409: {"description": "Email or username already taken"},
-        422: {"description": "Validation error (invalid email, short password, etc.)"},
+        status.HTTP_409_CONFLICT: {"description": "Email or username already taken"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Validation error (invalid email, short password, etc.)"
+        },
     },
 )
 @limiter.limit("5/minute")
@@ -55,8 +57,10 @@ async def register(
     summary="Login — returns access token, sets refresh token cookie",
     response_model=LoginOut,
     responses={
-        401: {"description": "Invalid credentials"},
-        429: {"description": "Account locked after too many failed attempts"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Invalid credentials"},
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Account locked after too many failed attempts"
+        },
     },
 )
 @limiter.limit("10/15minutes")
@@ -78,7 +82,7 @@ async def login(
         )
     except AccountLockedException as exc:
         raise HTTPException(
-            status_code=429,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=exc.message,
             headers={"Retry-After": str(exc.retry_after_minutes * 60)},
         )
@@ -91,7 +95,7 @@ async def login(
     summary="Rotate tokens — returns new access and refresh tokens",
     response_model=TokenOut,
     responses={
-        401: {"description": "Missing or invalid refresh token"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid refresh token"},
     },
 )
 @limiter.limit("20/minute")
@@ -104,7 +108,9 @@ async def refresh(
 ) -> TokenOut:
     token = body.refresh_token or cookie_token
     if not token:
-        raise HTTPException(status_code=401, detail="missing refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="missing refresh token"
+        )
     try:
         access_token, new_refresh_token = await auth_service.refresh(token)
         _set_refresh_cookie(response, new_refresh_token)
@@ -136,7 +142,7 @@ async def logout(
     summary="Get current authenticated user",
     response_model=UserOut,
     responses={
-        401: {"description": "Missing or invalid access token"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid access token"},
     },
 )
 async def me(current_user: CurrentUser) -> UserOut:

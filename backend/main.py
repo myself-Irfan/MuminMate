@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
@@ -43,7 +43,9 @@ def create_app() -> FastAPI:
 
     app.add_exception_handler(
         RateLimitExceeded,
-        lambda request, exc: JSONResponse(status_code=429, content={"detail": str(exc.detail)}),
+        lambda request, exc: JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": str(exc.detail)}
+        ),
     )
     app.add_exception_handler(
         AuthException,
