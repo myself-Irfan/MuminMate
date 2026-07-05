@@ -5,6 +5,7 @@ from sqlalchemy.pool import NullPool
 
 # ensure all entity tables are registered with Base.metadata before create_all
 import backend.auth.entities  # noqa: F401
+import backend.threads.entities  # noqa: F401
 from backend.config import settings
 from backend.database import Base, get_db
 from backend.main import app

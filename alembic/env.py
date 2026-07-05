@@ -1,6 +1,5 @@
 import asyncio
 from logging.config import fileConfig
-
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -9,6 +8,7 @@ from backend.database import Base
 
 # Import all entity modules so their tables register with Base.metadata
 import backend.auth.entities  # noqa: F401
+import backend.threads.entities  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

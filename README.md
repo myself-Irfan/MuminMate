@@ -12,7 +12,7 @@ Built with FastAPI · PostgreSQL + pgvector · Ollama (llama3.1:7b) · Server-Se
 |------|---------|-------|
 | Python | 3.13+ | |
 | uv | latest | `brew install uv` |
-| Docker | latest | for Postgres |
+| PostgreSQL | 16 | `brew install postgresql@16` — runs natively, not in Docker |
 | Ollama | latest | `brew install ollama` |
 
 ---
@@ -29,8 +29,10 @@ cp .env.example .env
 # Open .env and set SECRET_KEY:
 python -c "import secrets; print(secrets.token_hex(32))"
 
-# 3. Start Postgres (port 5433, avoids conflict with local pg)
-docker compose up -d
+# 3. Start Postgres (native, not Docker) and create the databases
+brew services start postgresql@16
+psql -d postgres -c "CREATE DATABASE muminmate;"
+psql -d postgres -c "CREATE DATABASE muminmate_test;"
 
 # 4. Run migrations
 uv run alembic upgrade head
@@ -48,11 +50,9 @@ App is at `http://localhost:8080`. API docs at `/docs` (Swagger) and `/redoc`.
 
 ## Running tests
 
-```bash
-# Start the test DB (port 5434)
-docker compose -f docker-compose.test.yml up -d
+Uses the `muminmate_test` database created in the quickstart above — tables are created and torn down per test run by `backend/tests/conftest.py`, no separate DB startup needed.
 
-# Run the full suite with coverage
+```bash
 uv run pytest --cov=backend --cov-report=term-missing
 ```
 
@@ -144,9 +144,9 @@ static/
 templates/            Jinja2 HTML (base.html + login, register, chat)
 data/corpus/          raw Islamic text corpus        (Phase 3, gitignored)
 ollama/pull.sh        pull llama3.1:7b + nomic-embed-text
-docker-compose.yml          Postgres on :5433
-docker-compose.test.yml     test DB on :5434
 ```
+
+Postgres runs natively (Homebrew `postgresql@16`, port 5432) — no docker-compose files for local dev. CI provisions its own ephemeral Postgres via GitHub Actions `services:`.
 
 ---
 
