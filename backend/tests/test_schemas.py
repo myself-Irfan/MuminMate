@@ -11,22 +11,22 @@ def test_valid_register_request():
 
 
 def test_username_whitespace_stripped():
-    r = RegisterRequest(email="user@example.com", username="  alice  ", password="password123")
-    assert r.username == "alice"
+    r = RegisterRequest(email="user@example.com", username="  irfan  ", password="password123")
+    assert r.username == "irfan"
 
 
 def test_username_too_short():
-    with pytest.raises(ValidationError, match="at least 3 characters"):
+    with pytest.raises(ValidationError, match="between 3 and 50 characters"):
         RegisterRequest(email="u@example.com", username="ab", password="password123")
 
 
 def test_username_too_short_after_strip():
-    with pytest.raises(ValidationError, match="at least 3 characters"):
+    with pytest.raises(ValidationError, match="between 3 and 50 characters"):
         RegisterRequest(email="u@example.com", username="  a  ", password="password123")
 
 
 def test_username_too_long():
-    with pytest.raises(ValidationError, match="at most 50 characters"):
+    with pytest.raises(ValidationError, match="between 3 and 50 characters"):
         RegisterRequest(email="u@example.com", username="a" * 51, password="password123")
 
 

@@ -8,13 +8,13 @@ class RegisterRequest(BaseModel):
 
     @field_validator("username")
     @classmethod
-    def validate_username(cls, v: str) -> str:
-        v = v.strip()
-        if len(v) < 3:
-            raise ValueError("username must be at least 3 characters")
-        if len(v) > 50:
-            raise ValueError("username must be at most 50 characters")
-        return v
+    def validate_username(cls, username: str) -> str:
+        username = username.strip()
+
+        if not (3 <= len(username) <= 50):
+            raise ValueError("username must be between 3 and 50 characters")
+
+        return username
 
     @field_validator("password")
     @classmethod
