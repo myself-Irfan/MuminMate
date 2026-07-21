@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Request, Response, status
 
 from backend.auth.dependencies import CurrentUser, DependsAuthService, RequireRefreshToken
-from backend.auth.exceptions import AccountLockedException, AuthException
 from backend.auth.schemas import (
     LoginOut,
     LoginRequest,
@@ -43,15 +42,12 @@ async def register(
     payload: RegisterRequest,
     auth_service: DependsAuthService,
 ) -> RegisterOut:
-    try:
-        user = await auth_service.register(
-            email=payload.email,
-            username=payload.username,
-            password=payload.password,
-        )
-        return RegisterOut(message="account created", user=UserOut.model_validate(user))
-    except AuthException as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    user = await auth_service.register(
+        email=payload.email,
+        username=payload.username,
+        password=payload.password,
+    )
+    return RegisterOut(message="account created", user=UserOut.model_validate(user))
 
 
 @router.post(
@@ -72,25 +68,16 @@ async def login(
     auth_service: DependsAuthService,
     response: Response,
 ) -> LoginOut:
-    try:
-        access_token, refresh_token = await auth_service.login(payload.email, payload.password)
-        _set_refresh_cookie(response, refresh_token)
-        user_id = decode_user_id(request, access_token)
-        user = await auth_service.get_current_user(user_id)
-        return LoginOut(
-            message="logged in",
-            access_token=access_token,
-            refresh_token=refresh_token,
-            user=UserOut.model_validate(user),
-        )
-    except AccountLockedException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=exc.message,
-            headers={"Retry-After": str(exc.retry_after_minutes * 60)},
-        )
-    except AuthException as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    access_token, refresh_token = await auth_service.login(payload.email, payload.password)
+    _set_refresh_cookie(response, refresh_token)
+    user_id = decode_user_id(request, access_token)
+    user = await auth_service.get_current_user(user_id)
+    return LoginOut(
+        message="logged in",
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserOut.model_validate(user),
+    )
 
 
 @router.post(
@@ -108,14 +95,11 @@ async def refresh(
     response: Response,
     token: RequireRefreshToken,
 ) -> TokenOut:
-    try:
-        access_token, new_refresh_token = await auth_service.refresh(token)
-        _set_refresh_cookie(response, new_refresh_token)
-        return TokenOut(
-            message="tokens refreshed", access_token=access_token, refresh_token=new_refresh_token
-        )
-    except AuthException as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    access_token, new_refresh_token = await auth_service.refresh(token)
+    _set_refresh_cookie(response, new_refresh_token)
+    return TokenOut(
+        message="tokens refreshed", access_token=access_token, refresh_token=new_refresh_token
+    )
 
 
 @router.post(

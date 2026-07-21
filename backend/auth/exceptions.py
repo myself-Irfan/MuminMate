@@ -1,11 +1,10 @@
 from fastapi import status
 
+from backend.exceptions import DomainException
 
-class AuthException(Exception):
-    def __init__(self, message: str, status_code: int = status.HTTP_400_BAD_REQUEST) -> None:
-        self.message = message
-        self.status_code = status_code
-        super().__init__(message)
+
+class AuthException(DomainException):
+    pass
 
 
 class UserAlreadyExistsException(AuthException):
@@ -29,6 +28,7 @@ class AccountLockedException(AuthException):
                 f"retry after {retry_after_minutes} minutes"
             ),
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry_after_minutes * 60)},
         )
 
 

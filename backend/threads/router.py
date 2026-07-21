@@ -1,11 +1,10 @@
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from backend.auth.dependencies import CurrentUser
 from backend.auth.schemas import MessageOut
 from backend.config import settings
 from backend.limiter import limiter
 from backend.threads.dependencies import DependsThreadService
-from backend.threads.exceptions import ThreadException
 from backend.threads.schemas import CreateThreadRequest, RenameThreadRequest, ThreadOut
 
 router = APIRouter(prefix="/api/threads", tags=["Threads"])
@@ -58,10 +57,7 @@ async def get_thread(
     current_user: CurrentUser,
     thread_service: DependsThreadService,
 ) -> ThreadOut:
-    try:
-        thread = await thread_service.get_owned(thread_id, current_user.id)
-    except ThreadException as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    thread = await thread_service.get_owned(thread_id, current_user.id)
     return ThreadOut.model_validate(thread)
 
 
@@ -77,10 +73,7 @@ async def rename_thread(
     current_user: CurrentUser,
     thread_service: DependsThreadService,
 ) -> ThreadOut:
-    try:
-        thread = await thread_service.rename(thread_id, current_user.id, payload.title)
-    except ThreadException as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    thread = await thread_service.rename(thread_id, current_user.id, payload.title)
     return ThreadOut.model_validate(thread)
 
 
@@ -98,8 +91,5 @@ async def delete_thread(
     current_user: CurrentUser,
     thread_service: DependsThreadService,
 ) -> MessageOut:
-    try:
-        await thread_service.delete(thread_id, current_user.id)
-    except ThreadException as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    await thread_service.delete(thread_id, current_user.id)
     return MessageOut(message="thread deleted")

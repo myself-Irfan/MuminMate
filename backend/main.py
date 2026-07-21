@@ -7,8 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from backend.auth.exceptions import AuthException
 from backend.config import settings
+from backend.exceptions import DomainException
 from backend.limiter import limiter, rate_limit_exceeded_handler
 from backend.logger import configure_logging, get_logger
 from backend.middleware.logging_context import LoggingContextMiddleware
@@ -43,9 +43,9 @@ def create_app() -> FastAPI:
 
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     app.add_exception_handler(
-        AuthException,
+        DomainException,
         lambda request, exc: JSONResponse(
-            status_code=exc.status_code, content={"detail": exc.message}
+            status_code=exc.status_code, content={"detail": exc.message}, headers=exc.headers
         ),
     )
 
