@@ -1,10 +1,11 @@
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 
 from backend.auth.entities import User
 from backend.auth.repository import SQLAlchemyUserRepository
+from backend.auth.schemas import RefreshRequest
 from backend.auth.services.auth_service import AuthService
 from backend.database import DbSession
 
@@ -33,3 +34,26 @@ async def _get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(_get_current_user)]
+
+
+async def _require_refresh_token(
+    request: Request,
+    body: RefreshRequest = RefreshRequest(),
+    cookie_token: str | None = Cookie(alias="refresh_token", default=None),
+) -> str:
+    """Resolve the refresh token from body or cookie, 401 if neither is present.
+
+    Runs as a FastAPI dependency, so it's resolved before slowapi's key_func —
+    this guarantees `/refresh`'s rate limiter never sees a request without a
+    token, so its key_func never needs to fall back to IP.
+    """
+    token = body.refresh_token or cookie_token
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="missing refresh token"
+        )
+    request.state.refresh_token = token
+    return token
+
+
+RequireRefreshToken = Annotated[str, Depends(_require_refresh_token)]

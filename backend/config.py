@@ -66,6 +66,49 @@ class Settings(BaseSettings):
     def cache_expiry(self) -> timedelta:
         return timedelta(days=self.cache_expiry_days)
 
+    # rate limiting
+    register_count_in_minutes: int = Field()
+    login_count_in_minutes: int = Field()
+    refresh_count_in_minutes: int = Field()
+    rate_limit_threads_create_count: int = Field()
+    rate_limit_threads_delete_count: int = Field()
+
+    @property
+    def rate_limit_register(self) -> str:
+        return f"{self.register_count_in_minutes}/minutes"
+
+    @property
+    def rate_limit_login(self) -> str:
+        return f"{self.login_count_in_minutes}/minutes"
+
+    @property
+    def rate_limit_refresh(self) -> str:
+        return f"{self.refresh_count_in_minutes}/minutes"
+
+    @property
+    def rate_limit_threads_create(self) -> str:
+        return f"{self.rate_limit_threads_create_count}/minutes"
+
+    @property
+    def rate_limit_threads_delete(self) -> str:
+        return f"{self.rate_limit_threads_delete_count}/minutes"
+
+    rate_limit_default_per_minute_count: int = Field()
+    rate_limit_default_per_hour_count: int = Field()
+    rate_limit_default_per_day_count: int = Field()
+
+    @property
+    def rate_limit_default_per_minute(self) -> str:
+        return f"{self.rate_limit_default_per_minute_count}/minute"
+
+    @property
+    def rate_limit_default_per_hour(self) -> str:
+        return f"{self.rate_limit_default_per_hour_count}/hour"
+
+    @property
+    def rate_limit_default_per_day(self) -> str:
+        return f"{self.rate_limit_default_per_day_count}/day"
+
     # lockout
     login_attempt_window_minutes: int = Field(default=15)
     login_attempt_max_failures: int = Field(default=5)

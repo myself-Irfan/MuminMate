@@ -55,6 +55,14 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://muminmate:muminmate@localhost:5433/muminmate
       TEST_DATABASE_URL: postgresql+asyncpg://muminmate:muminmate@localhost:5433/muminmate_test
       SECRET_KEY: ci-test-secret-key-not-for-production
+      REGISTER_COUNT_IN_MINUTES: "300"
+      LOGIN_COUNT_IN_MINUTES: "10"
+      REFRESH_COUNT_IN_MINUTES: "600"
+      RATE_LIMIT_THREADS_CREATE_COUNT: "30"
+      RATE_LIMIT_THREADS_DELETE_COUNT: "30"
+      RATE_LIMIT_DEFAULT_PER_MINUTE_COUNT: "100"
+      RATE_LIMIT_DEFAULT_PER_HOUR_COUNT: "1000"
+      RATE_LIMIT_DEFAULT_PER_DAY_COUNT: "5000"
 
     steps:
       - uses: actions/checkout@v4

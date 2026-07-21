@@ -1,18 +1,18 @@
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 
-from backend.auth.dependencies import CurrentUser, DependsAuthService
+from backend.auth.dependencies import CurrentUser, DependsAuthService, RequireRefreshToken
 from backend.auth.exceptions import AccountLockedException, AuthException
 from backend.auth.schemas import (
     LoginOut,
     LoginRequest,
     MessageOut,
-    RefreshRequest,
     RegisterOut,
     RegisterRequest,
     TokenOut,
     UserOut,
 )
-from backend.limiter import limiter
+from backend.config import settings
+from backend.limiter import limiter, refresh_token_rate_limit_key
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -35,9 +35,10 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
         },
     },
 )
-@limiter.limit("5/minute")
+@limiter.limit(settings.rate_limit_register)
 async def register(
     request: Request,
+    response: Response,
     payload: RegisterRequest,
     auth_service: DependsAuthService,
 ) -> RegisterOut:
@@ -63,7 +64,7 @@ async def register(
         },
     },
 )
-@limiter.limit("10/15minutes")
+@limiter.limit(settings.rate_limit_login)
 async def login(
     request: Request,
     payload: LoginRequest,
@@ -98,19 +99,13 @@ async def login(
         status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid refresh token"},
     },
 )
-@limiter.limit("20/minute")
+@limiter.limit(settings.rate_limit_refresh, key_func=refresh_token_rate_limit_key)
 async def refresh(
     request: Request,
     auth_service: DependsAuthService,
     response: Response,
-    body: RefreshRequest = RefreshRequest(),
-    cookie_token: str | None = Cookie(alias="refresh_token", default=None),
+    token: RequireRefreshToken,
 ) -> TokenOut:
-    token = body.refresh_token or cookie_token
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="missing refresh token"
-        )
     try:
         access_token, new_refresh_token = await auth_service.refresh(token)
         _set_refresh_cookie(response, new_refresh_token)

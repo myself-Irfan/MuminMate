@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from backend.auth.dependencies import CurrentUser
 from backend.auth.schemas import MessageOut
+from backend.config import settings
 from backend.limiter import limiter
 from backend.threads.dependencies import DependsThreadService
 from backend.threads.exceptions import ThreadException
@@ -20,9 +21,7 @@ _OWNERSHIP_RESPONSES = {
     summary="List the current user's threads",
     response_model=list[ThreadOut],
 )
-@limiter.limit("60/minute")
 async def list_threads(
-    request: Request,
     current_user: CurrentUser,
     thread_service: DependsThreadService,
 ) -> list[ThreadOut]:
@@ -36,9 +35,10 @@ async def list_threads(
     summary="Create a new thread",
     response_model=ThreadOut,
 )
-@limiter.limit("30/hour")
+@limiter.limit(settings.rate_limit_threads_create)
 async def create_thread(
     request: Request,
+    response: Response,
     payload: CreateThreadRequest,
     current_user: CurrentUser,
     thread_service: DependsThreadService,
@@ -90,9 +90,10 @@ async def rename_thread(
     response_model=MessageOut,
     responses=_OWNERSHIP_RESPONSES,
 )
-@limiter.limit("30/hour")
+@limiter.limit(settings.rate_limit_threads_delete)
 async def delete_thread(
     request: Request,
+    response: Response,
     thread_id: int,
     current_user: CurrentUser,
     thread_service: DependsThreadService,
