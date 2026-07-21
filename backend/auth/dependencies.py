@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordBearer
 from backend.auth.entities import User
 from backend.auth.repository import SQLAlchemyUserRepository
 from backend.auth.schemas import RefreshRequest
+from backend.auth.services._helpers import decode_user_id
 from backend.auth.services.auth_service import AuthService
 from backend.database import DbSession
 
@@ -30,7 +31,8 @@ async def _get_current_user(
     auth_service: DependsAuthService,
     token: Annotated[str, Depends(oauth2_scheme)],
 ) -> User:
-    return await auth_service.get_current_user(request, token)
+    user_id = decode_user_id(request, token)
+    return await auth_service.get_current_user(user_id)
 
 
 CurrentUser = Annotated[User, Depends(_get_current_user)]

@@ -1,9 +1,7 @@
-from starlette.requests import Request
-
 from backend.auth.entities import User
 from backend.auth.exceptions import InvalidTokenException, UserAlreadyExistsException
 from backend.auth.repository import UserRepository
-from backend.auth.services._helpers import decode_user_id, hash_password, hash_token
+from backend.auth.services._helpers import hash_password, hash_token
 from backend.auth.services.login_flow import _LoginFlow
 from backend.auth.services.refresh_flow import _RefreshFlow
 from backend.logger import get_logger
@@ -34,8 +32,7 @@ class AuthService:
     async def logout(self, refresh_token: str) -> None:
         await self._repo.delete_refresh_token(hash_token(refresh_token))
 
-    async def get_current_user(self, request: Request, token: str) -> User:
-        user_id = decode_user_id(request, token)
+    async def get_current_user(self, user_id: int | None) -> User:
         if user_id is None:
             raise InvalidTokenException()
 
