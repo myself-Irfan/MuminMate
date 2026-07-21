@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import jwt
 import pytest
 from argon2 import PasswordHasher
@@ -5,12 +7,17 @@ from argon2 import PasswordHasher
 from backend.auth.services._helpers import (
     create_access_token,
     create_refresh_token,
+    decode_user_id,
     hash_password,
     hash_token,
     password_needs_rehash,
     verify_password,
 )
 from backend.config import settings
+
+
+def _fake_request():
+    return SimpleNamespace(state=SimpleNamespace())
 
 
 def test_hash_password_returns_argon2_hash():
@@ -94,3 +101,28 @@ def test_create_access_token_various_ids(user_id: int):
     token = create_access_token(user_id)
     payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     assert payload["sub"] == str(user_id)
+
+
+def test_decode_user_id_returns_id_from_valid_token():
+    token = create_access_token(42)
+    assert decode_user_id(_fake_request(), token) == 42
+
+
+def test_decode_user_id_returns_none_for_invalid_token():
+    assert decode_user_id(_fake_request(), "not-a-jwt") is None
+
+
+def test_decode_user_id_caches_on_request_state():
+    request = _fake_request()
+    token = create_access_token(7)
+    assert decode_user_id(request, token) == 7
+    # a different (invalid) token still returns the cached value — no re-decode
+    assert decode_user_id(request, "not-a-jwt") == 7
+
+
+def test_decode_user_id_caches_none_on_request_state():
+    request = _fake_request()
+    assert decode_user_id(request, "not-a-jwt") is None
+    valid_token = create_access_token(7)
+    # cached None from the first call wins — no re-decode of the valid token
+    assert decode_user_id(request, valid_token) is None

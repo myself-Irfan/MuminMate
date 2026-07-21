@@ -73,7 +73,7 @@ async def login(
     try:
         access_token, refresh_token = await auth_service.login(payload.email, payload.password)
         _set_refresh_cookie(response, refresh_token)
-        user = await auth_service.get_current_user(access_token)
+        user = await auth_service.get_current_user(request, access_token)
         return LoginOut(
             message="logged in",
             access_token=access_token,

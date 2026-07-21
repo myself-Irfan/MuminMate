@@ -1,11 +1,11 @@
 import time
 
-import jwt
 import structlog.contextvars
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
+from backend.auth.services._helpers import decode_user_id
 from backend.config import settings
 from backend.logger import get_logger
 
@@ -58,11 +58,9 @@ class LoggingContextMiddleware(BaseHTTPMiddleware):
         if not auth or not auth.lower().startswith("bearer "):
             return
         token = auth.split(" ", 1)[1]
-        try:
-            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-            structlog.contextvars.bind_contextvars(user_id=payload.get("sub"))
-        except jwt.InvalidTokenError:
-            pass
+        user_id = decode_user_id(request, token)
+        if user_id is not None:
+            structlog.contextvars.bind_contextvars(user_id=user_id)
 
     @staticmethod
     def _sanitize(data: dict) -> dict:

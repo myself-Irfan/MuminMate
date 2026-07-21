@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 
 from backend.auth.entities import User
@@ -25,10 +25,11 @@ DependsAuthService = Annotated[AuthService, Depends(_get_auth_service)]
 
 
 async def _get_current_user(
+    request: Request,
     auth_service: DependsAuthService,
     token: Annotated[str, Depends(oauth2_scheme)],
 ) -> User:
-    return await auth_service.get_current_user(token)
+    return await auth_service.get_current_user(request, token)
 
 
 CurrentUser = Annotated[User, Depends(_get_current_user)]
