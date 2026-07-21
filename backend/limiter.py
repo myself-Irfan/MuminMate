@@ -1,4 +1,7 @@
+from fastapi import status
+from fastapi.responses import JSONResponse
 from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.requests import Request
 
@@ -41,3 +44,10 @@ limiter = Limiter(
     key_func=rate_limit_key,
     headers_enabled=True,
 )
+
+
+def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    response = JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": str(exc.detail)}
+    )
+    return limiter._inject_headers(response, request.state.view_rate_limit)

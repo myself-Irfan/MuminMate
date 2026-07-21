@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
@@ -9,7 +9,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from backend.auth.exceptions import AuthException
 from backend.config import settings
-from backend.limiter import limiter
+from backend.limiter import limiter, rate_limit_exceeded_handler
 from backend.logger import configure_logging, get_logger
 from backend.middleware.logging_context import LoggingContextMiddleware
 from backend.routers import register_routers
@@ -41,12 +41,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(LoggingContextMiddleware)
 
-    app.add_exception_handler(
-        RateLimitExceeded,
-        lambda request, exc: JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS, content={"detail": str(exc.detail)}
-        ),
-    )
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     app.add_exception_handler(
         AuthException,
         lambda request, exc: JSONResponse(
