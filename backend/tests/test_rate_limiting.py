@@ -59,7 +59,7 @@ async def test_register_is_rate_limited(client: AsyncClient, rate_limiting_enabl
     assert resp.headers["X-RateLimit-Limit"] == str(settings.register_count_in_minutes)
 
 
-async def test_refresh_keyed_by_token_not_shared_ip(client: AsyncClient, rate_limiting_enabled):
+async def test_refresh_keyed_by_user_not_shared_ip(client: AsyncClient, rate_limiting_enabled):
     """Both users hit the endpoint through the same test client, so they share
     the same (fake) IP. If the key ever fell back to IP, the second user would
     see a lower remaining count from the first user's usage."""
@@ -76,6 +76,25 @@ async def test_refresh_keyed_by_token_not_shared_ip(client: AsyncClient, rate_li
     remaining_b = int(resp_b.headers["X-RateLimit-Remaining"])
 
     assert remaining_a == remaining_b
+
+
+async def test_refresh_keyed_by_user_not_rotating_token(client: AsyncClient, rate_limiting_enabled):
+    """Refresh tokens rotate every call, so keying by the token itself would give
+    each call a fresh, never-before-seen bucket — unable to catch a client stuck
+    in a rapid retry loop. Keying by the token's owning user_id instead means
+    repeated calls from the same user (via successively rotated cookies) decrement
+    the same bucket."""
+    await _register_and_login(client, "refresh-repeat@example.com", "refreshrepeat")
+
+    resp1 = await client.post("/api/auth/refresh")
+    assert resp1.status_code == status.HTTP_200_OK
+    remaining1 = int(resp1.headers["X-RateLimit-Remaining"])
+
+    resp2 = await client.post("/api/auth/refresh")
+    assert resp2.status_code == status.HTTP_200_OK
+    remaining2 = int(resp2.headers["X-RateLimit-Remaining"])
+
+    assert remaining2 == remaining1 - 1
 
 
 async def test_threads_create_keyed_by_user_not_shared_ip(

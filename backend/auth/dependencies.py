@@ -40,21 +40,16 @@ CurrentUser = Annotated[User, Depends(_get_current_user)]
 
 async def _require_refresh_token(
     request: Request,
+    auth_service: DependsAuthService,
     body: RefreshRequest = RefreshRequest(),
     cookie_token: str | None = Cookie(alias="refresh_token", default=None),
 ) -> str:
-    """Resolve the refresh token from body or cookie, 401 if neither is present.
-
-    Runs as a FastAPI dependency, so it's resolved before slowapi's key_func —
-    this guarantees `/refresh`'s rate limiter never sees a request without a
-    token, so its key_func never needs to fall back to IP.
-    """
     token = body.refresh_token or cookie_token
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="missing refresh token"
         )
-    request.state.refresh_token = token
+    request.state.refresh_user_id = await auth_service.get_refresh_token_owner(token)
     return token
 
 

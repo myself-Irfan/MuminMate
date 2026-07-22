@@ -29,6 +29,10 @@ class AuthService:
         token_hash = hash_token(refresh_token)
         return await _RefreshFlow(self._repo).execute(token_hash)
 
+    async def get_refresh_token_owner(self, refresh_token: str) -> int | None:
+        existing = await self._repo.get_refresh_token(hash_token(refresh_token))
+        return existing.user_id if existing else None
+
     async def logout(self, refresh_token: str) -> None:
         await self._repo.delete_refresh_token(hash_token(refresh_token))
 

@@ -12,7 +12,7 @@ from backend.auth.schemas import (
 )
 from backend.auth.services._helpers import decode_user_id
 from backend.config import settings
-from backend.limiter import limiter, refresh_token_rate_limit_key
+from backend.limiter import limiter, refresh_user_rate_limit_key
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -88,7 +88,7 @@ async def login(
         status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid refresh token"},
     },
 )
-@limiter.limit(settings.rate_limit_refresh, key_func=refresh_token_rate_limit_key)
+@limiter.limit(settings.rate_limit_refresh, key_func=refresh_user_rate_limit_key)
 async def refresh(
     request: Request,
     auth_service: DependsAuthService,
