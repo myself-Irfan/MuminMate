@@ -3,8 +3,35 @@
 {% block title %}MuminMate — Chat{% endblock %}
 
 {% block content %}
-<main>
-  <h1>مؤمن MuminMate</h1>
-  <p>Chat UI coming soon.</p>
-</main>
+<div class="chat-layout d-flex">
+  <aside class="thread-sidebar d-flex flex-column">
+    <div class="sidebar-header d-flex justify-content-between align-items-center">
+      <h1 class="brand-title-sm mb-0">مؤمن</h1>
+      <button type="button" class="btn btn-sm btn-outline-light" id="logout-btn">Log out</button>
+    </div>
+
+    <button type="button" class="btn btn-primary w-100 mt-3 mb-3" id="new-thread-btn">+ New thread</button>
+
+    <div id="thread-list-alert"></div>
+
+    <ul class="thread-list list-unstyled flex-grow-1" id="thread-list"></ul>
+
+    <p class="username-display small mb-0" id="username-display"></p>
+  </aside>
+
+  <main class="chat-main flex-grow-1 d-flex flex-column align-items-center justify-content-center">
+    <div id="empty-state" class="text-center text-muted">
+      <p>Select a thread or start a new one.</p>
+    </div>
+    <div id="thread-detail" class="d-none text-center">
+      <h2 id="thread-detail-title"></h2>
+      <p class="text-muted small" id="thread-detail-meta"></p>
+      <p class="text-muted">Chat interface coming soon.</p>
+    </div>
+  </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/threads.js"></script>
 {% endblock %}

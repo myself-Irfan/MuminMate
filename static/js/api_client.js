@@ -1,14 +1,24 @@
 class ApiClient {
     constructor() {
         this._accessToken = null;
+        this._user = null;
     }
 
     setAccessToken(token) {
         this._accessToken = token;
     }
 
+    setUser(user) {
+        this._user = user;
+    }
+
+    getUser() {
+        return this._user;
+    }
+
     clearAccessToken() {
         this._accessToken = null;
+        this._user = null;
     }
 
     async refreshAccessToken() {
@@ -17,6 +27,7 @@ class ApiClient {
             if (!resp.ok) return false;
             const data = await resp.json();
             this._accessToken = data.access_token;
+            this._user = data.user;
             return true;
         } catch {
             return false;

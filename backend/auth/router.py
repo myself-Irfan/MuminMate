@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Cookie, Request, Response, status
 
-from backend.auth.dependencies import CurrentUser, DependsAuthService, RequireRefreshToken
+from backend.auth.dependencies import DependsAuthService, RequireRefreshToken
 from backend.auth.schemas import (
     LoginOut,
     LoginRequest,
@@ -97,8 +97,13 @@ async def refresh(
 ) -> TokenOut:
     access_token, new_refresh_token = await auth_service.refresh(token)
     _set_refresh_cookie(response, new_refresh_token)
+    user_id = decode_user_id(request, access_token)
+    user = await auth_service.get_current_user(user_id)
     return TokenOut(
-        message="tokens refreshed", access_token=access_token, refresh_token=new_refresh_token
+        message="tokens refreshed",
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        user=UserOut.model_validate(user),
     )
 
 
@@ -116,15 +121,3 @@ async def logout(
         await auth_service.logout(refresh_token)
     response.delete_cookie("refresh_token")
     return MessageOut(message="logged out")
-
-
-@router.get(
-    "/me",
-    summary="Get current authenticated user",
-    response_model=UserOut,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid access token"},
-    },
-)
-async def me(current_user: CurrentUser) -> UserOut:
-    return UserOut.model_validate(current_user)

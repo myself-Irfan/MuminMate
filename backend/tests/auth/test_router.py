@@ -68,18 +68,7 @@ async def test_login_lockout(client: AsyncClient, registered_user: dict):
     assert "Retry-After" in resp.headers
 
 
-async def test_me_authenticated(auth_client: AsyncClient, registered_user: dict):
-    resp = await auth_client.get("/api/auth/me")
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["email"] == registered_user["email"]
-
-
-async def test_me_unauthenticated(client: AsyncClient):
-    resp = await client.get("/api/auth/me")
-    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-async def test_refresh(auth_client: AsyncClient):
+async def test_refresh(auth_client: AsyncClient, registered_user: dict):
     resp = await auth_client.post("/api/auth/refresh")
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
@@ -87,6 +76,7 @@ async def test_refresh(auth_client: AsyncClient):
     assert "refresh_token" in body
     assert body["token_type"] == "bearer"
     assert "refresh_token" in resp.cookies
+    assert body["user"]["email"] == registered_user["email"]
 
 
 async def test_refresh_no_cookie(client: AsyncClient):
@@ -99,5 +89,5 @@ async def test_logout(auth_client: AsyncClient):
     assert resp.status_code == status.HTTP_200_OK
     # Client discards the token — server cannot revoke a stateless JWT
     auth_client.headers.pop("Authorization", None)
-    resp2 = await auth_client.get("/api/auth/me")
+    resp2 = await auth_client.get("/api/threads")
     assert resp2.status_code == status.HTTP_401_UNAUTHORIZED

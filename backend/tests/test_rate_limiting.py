@@ -100,12 +100,6 @@ async def test_logout_has_no_rate_limit(auth_client: AsyncClient, rate_limiting_
     assert "X-RateLimit-Limit" not in resp.headers
 
 
-async def test_me_has_no_rate_limit(auth_client: AsyncClient, rate_limiting_enabled):
-    resp = await auth_client.get("/api/auth/me")
-    assert resp.status_code == status.HTTP_200_OK
-    assert "X-RateLimit-Limit" not in resp.headers
-
-
 async def test_list_threads_has_no_rate_limit(auth_client: AsyncClient, rate_limiting_enabled):
     resp = await auth_client.get("/api/threads")
     assert resp.status_code == status.HTTP_200_OK

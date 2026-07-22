@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await apiClient.handleResponse(resp);
             apiClient.setAccessToken(data.access_token);
+            apiClient.setUser(data.user);
             UIUtils.showAlert('alert', 'success', 'Login successful. Redirecting…');
             UIUtils.redirectAfterDelay('/');
         } catch (err) {
