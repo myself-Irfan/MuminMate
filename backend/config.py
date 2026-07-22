@@ -71,7 +71,6 @@ class Settings(BaseSettings):
     login_count_in_minutes: int = Field()
     refresh_count_in_minutes: int = Field()
     rate_limit_threads_create_count: int = Field()
-    rate_limit_threads_delete_count: int = Field()
 
     @property
     def rate_limit_register(self) -> str:
@@ -88,10 +87,6 @@ class Settings(BaseSettings):
     @property
     def rate_limit_threads_create(self) -> str:
         return f"{self.rate_limit_threads_create_count}/minutes"
-
-    @property
-    def rate_limit_threads_delete(self) -> str:
-        return f"{self.rate_limit_threads_delete_count}/minutes"
 
     rate_limit_default_per_minute_count: int = Field()
     rate_limit_default_per_hour_count: int = Field()

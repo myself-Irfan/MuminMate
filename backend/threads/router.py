@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, Response, status
 from backend.auth.dependencies import CurrentUser
 from backend.auth.schemas import MessageOut
 from backend.config import settings
-from backend.limiter import limiter
+from backend.limiter import limiter, user_rate_limit_key
 from backend.threads.dependencies import DependsThreadService
 from backend.threads.schemas import CreateThreadRequest, RenameThreadRequest, ThreadOut
 
@@ -34,7 +34,7 @@ async def list_threads(
     summary="Create a new thread",
     response_model=ThreadOut,
 )
-@limiter.limit(settings.rate_limit_threads_create)
+@limiter.limit(settings.rate_limit_threads_create, key_func=user_rate_limit_key)
 async def create_thread(
     request: Request,
     response: Response,
@@ -83,10 +83,7 @@ async def rename_thread(
     response_model=MessageOut,
     responses=_OWNERSHIP_RESPONSES,
 )
-@limiter.limit(settings.rate_limit_threads_delete)
 async def delete_thread(
-    request: Request,
-    response: Response,
     thread_id: int,
     current_user: CurrentUser,
     thread_service: DependsThreadService,

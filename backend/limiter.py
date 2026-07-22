@@ -5,21 +5,19 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.requests import Request
 
-from backend.auth.services._helpers import decode_user_id, hash_token
+from backend.auth.services._helpers import hash_token
 
 
-def rate_limit_key(request: Request) -> str:
-    """Key by user_id when an access token is present, else fall back to IP.
+def user_rate_limit_key(request: Request) -> str:
+    """Key by user_id, for routes behind the `CurrentUser` dependency.
 
-    Pre-login endpoints (register, login) never carry a bearer token, so this
-    falls back to IP for them automatically — no per-route override needed.
+    FastAPI resolves `CurrentUser` (401s on a missing/invalid token) before
+    slowapi's key_func ever runs, and that dependency already calls
+    decode_user_id, caching the result on request.state.jwt_user_id. So this
+    always finds a valid cached user_id — no IP fallback, ever: reaching this
+    without one would mean CurrentUser already let something broken through.
     """
-    auth = request.headers.get("Authorization", "")
-    if auth.lower().startswith("bearer "):
-        user_id = decode_user_id(request, auth.split(" ", 1)[1])
-        if user_id is not None:
-            return f"user:{user_id}"
-    return get_remote_address(request)
+    return f"user:{request.state.jwt_user_id}"
 
 
 def refresh_token_rate_limit_key(request: Request) -> str:
@@ -41,7 +39,7 @@ def refresh_token_rate_limit_key(request: Request) -> str:
 
 
 limiter = Limiter(
-    key_func=rate_limit_key,
+    key_func=get_remote_address,
     headers_enabled=True,
 )
 

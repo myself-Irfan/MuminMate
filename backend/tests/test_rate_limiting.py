@@ -112,3 +112,11 @@ async def test_get_thread_has_no_rate_limit(auth_client: AsyncClient, rate_limit
     resp = await auth_client.get(f"/api/threads/{thread_id}")
     assert resp.status_code == status.HTTP_200_OK
     assert "X-RateLimit-Limit" not in resp.headers
+
+
+async def test_delete_thread_has_no_rate_limit(auth_client: AsyncClient, rate_limiting_enabled):
+    create_resp = await auth_client.post("/api/threads", json={"title": "x"})
+    thread_id = create_resp.json()["id"]
+    resp = await auth_client.delete(f"/api/threads/{thread_id}")
+    assert resp.status_code == status.HTTP_200_OK
+    assert "X-RateLimit-Limit" not in resp.headers
