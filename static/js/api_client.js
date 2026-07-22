@@ -113,6 +113,10 @@ class ApiClient {
         return this.request(endpoint, { method: 'PUT', body: JSON.stringify(data) });
     }
 
+    async patch(endpoint, data) {
+        return this.request(endpoint, { method: 'PATCH', body: JSON.stringify(data) });
+    }
+
     async delete(endpoint) {
         return this.request(endpoint, { method: 'DELETE' });
     }
