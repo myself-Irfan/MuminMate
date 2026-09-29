@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Tool caches and reports
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Local config and secrets (only the example is tracked)
+.env
+.env.*
+!.env.example
+
+# Django and Celery runtime files
+staticfiles/
+media/
+*.sqlite3
+celerybeat-schedule*
+*.log
