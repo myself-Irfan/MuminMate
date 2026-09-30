@@ -6,13 +6,14 @@ A grounded Quran and hadith assistant: every answer cites its sources, or says i
 
 - [uv](https://docs.astral.sh/uv/)
 - Docker
+- make
 
 ## Setup
 
 ```bash
 uv sync
 cp .env.example .env   # fill in the secrets; DJANGO_DEBUG=true locally
-docker compose up -d --wait
+make up
 uv run python manage.py migrate
 uv run python manage.py check
 ```
@@ -31,3 +32,12 @@ Every variable is required; the app refuses to start if one is missing.
 | `POSTGRES_PASSWORD` | Database password |
 | `POSTGRES_HOST` | `localhost` from the host; the service name inside compose |
 | `POSTGRES_PORT` | Host port mapped to the db container |
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `make up` / `make down` | Start / stop the database |
+| `make lint` | Lint and format check (what CI runs) |
+| `make format` | Auto-fix lint and formatting |
+| `make typecheck` | Type check (mypy, strict) |

@@ -1,6 +1,8 @@
 from typing import Annotated
+
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
 
 class Env(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
