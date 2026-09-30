@@ -30,6 +30,8 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_SECRET_KEY` | Signing key. Generate with the command in `.env.example` |
 | `DJANGO_DEBUG` | `true` only for local development |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames the app serves |
+| `DJANGO_HTTPS` | `true` only when served over HTTPS (redirect + secure cookies) |
+| `DJANGO_HSTS_SECONDS` | HSTS max-age; `0` locally, start production at `3600` |
 | `POSTGRES_DB` | Database name |
 | `POSTGRES_USER` | Database user |
 | `POSTGRES_PASSWORD` | Database password |

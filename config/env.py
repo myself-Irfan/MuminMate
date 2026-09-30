@@ -13,6 +13,8 @@ class Env(BaseSettings):
     django_secret_key: SecretStr
     django_debug: bool
     django_allowed_hosts: Annotated[list[str], NoDecode]
+    django_https: bool
+    django_hsts_seconds: int
 
     postgres_db: str
     postgres_user: str
