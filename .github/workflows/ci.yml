@@ -47,10 +47,42 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
       - run: uv sync --locked
+      - name: Audit Dependencies
+        run: >-
+          uv export --color never --locked --no-emit-project --format requirements-txt --quiet
+          | uvx pip-audit==2.10.1 --requirement /dev/stdin --disable-pip --progress-spinner off
       - run: uv run pre-commit run --all-files --show-diff-on-failure
       - run: make typecheck
       - run: uv run python manage.py makemigrations --check --dry-run
-      - run: make test
+      - name: Test
+        run: uv run pytest --cov --cov-report=term --cov-report=html --junitxml=junit.xml
+      - name: Test Summary
+        if: ${{ !cancelled() && hashFiles('junit.xml') != '' }}
+        run: |
+          uv run python - >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import xml.etree.ElementTree as ET
+          suite = ET.parse("junit.xml").getroot().find("testsuite")
+          total, failed, errors, skipped = (
+              int(suite.get(key)) for key in ("tests", "failures", "errors", "skipped")
+          )
+          passed = total - failed - errors - skipped
+          print("## Tests\n")
+          print("| Passed | Failed | Errors | Skipped | Time |")
+          print("|---|---|---|---|---|")
+          print(f"| {passed} | {failed} | {errors} | {skipped} | {float(suite.get('time')):.1f}s |")
+          print("\n## Coverage\n")
+          EOF
+          # Report only; the Test step enforces fail_under.
+          uv run coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Test Reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: test-reports
+          path: |
+            junit.xml
+            htmlcov/
+          retention-days: 14
       - name: Deploy Check
         run: uv run python manage.py check --deploy --fail-level WARNING
         env:
