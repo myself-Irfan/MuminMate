@@ -9,6 +9,14 @@ SECRET_KEY = env.django_secret_key.get_secret_value()
 DEBUG = env.django_debug
 ALLOWED_HOSTS = env.django_allowed_hosts
 
+SECURE_SSL_REDIRECT = env.django_https
+SESSION_COOKIE_SECURE = env.django_https
+CSRF_COOKIE_SECURE = env.django_https
+SECURE_HSTS_SECONDS = env.django_hsts_seconds
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.django_hsts_seconds > 0
+# HSTS preload is near-irreversible and needs a real domain; revisit at release.
+SILENCED_SYSTEM_CHECKS = ["security.W021"]
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

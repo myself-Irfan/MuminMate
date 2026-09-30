@@ -15,6 +15,8 @@ def env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
         "POSTGRES_PASSWORD": "password",
         "POSTGRES_HOST": "localhost",
         "POSTGRES_PORT": "5432",
+        "DJANGO_HTTPS": "false",
+        "DJANGO_HSTS_SECONDS": "0",
     }
 
     for key, value in values.items():
