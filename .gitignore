@@ -11,6 +11,9 @@ __pycache__/
 htmlcov/
 coverage.xml
 
+# OS
+.DS_Store
+
 # Local config and secrets (only the example is tracked)
 .env
 .env.*
