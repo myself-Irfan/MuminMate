@@ -37,3 +37,8 @@ exclude = ["migrations/"]
 
 [tool.django-stubs]
 django_settings_module = "config.settings"
+
+[tool.pytest]
+DJANGO_SETTINGS_MODULE = "config.settings"
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers", "-ra"]

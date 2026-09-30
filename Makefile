@@ -1,10 +1,13 @@
-.PHONY: up down lint format typecheck
+.PHONY: up down test lint format typecheck
 
 up:
 	docker compose up -d --wait
 
 down:
 	docker compose down
+
+test:
+	uv run pytest
 
 lint:
 	uv run ruff check .

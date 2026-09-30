@@ -41,3 +41,4 @@ Every variable is required; the app refuses to start if one is missing.
 | `make lint` | Lint and format check (what CI runs) |
 | `make format` | Auto-fix lint and formatting |
 | `make typecheck` | Type check (mypy, strict) |
+| `make test` | Run the test suite |
