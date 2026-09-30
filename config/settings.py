@@ -10,6 +10,8 @@ DEBUG = env.django_debug
 ALLOWED_HOSTS = env.django_allowed_hosts
 
 SECURE_SSL_REDIRECT = env.django_https
+# Probes call the pod over plain HTTP.
+SECURE_REDIRECT_EXEMPT = [r"^api/health/"]
 SESSION_COOKIE_SECURE = env.django_https
 CSRF_COOKIE_SECURE = env.django_https
 SECURE_HSTS_SECONDS = env.django_hsts_seconds
@@ -67,7 +69,8 @@ DATABASES = {
         "PASSWORD": env.postgres_password.get_secret_value(),
         "HOST": env.postgres_host,
         "PORT": env.postgres_port,
-        "OPTIONS": {"pool": True},
+        # Fail fast (default 30 s) so /ready answers before the probe times out.
+        "OPTIONS": {"pool": {"timeout": 5}},
     }
 }
 

@@ -24,14 +24,14 @@ def env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.usefixtures("env_vars")
-def test_allowed_hosts_split_trimmed() -> None:
+def test_allowed_hosts_trimmed_when_padded() -> None:
     env = Env(_env_file=None)
 
     assert env.django_allowed_hosts == ["example.com", "api.example.com"]
 
 
 @pytest.mark.usefixtures("env_vars")
-def test_missing_var_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DJANGO_SECRET_KEY")
 
     with pytest.raises(ValidationError, match="django_secret_key"):
