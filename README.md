@@ -2,6 +2,8 @@
 
 A grounded Quran and hadith assistant: every answer cites its sources, or says it couldn't find one.
 
+CI (GitHub Actions) runs pre-commit, mypy, the migration check and the tests on every PR.
+
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/)
@@ -12,6 +14,7 @@ A grounded Quran and hadith assistant: every answer cites its sources, or says i
 
 ```bash
 uv sync
+uv run pre-commit install
 cp .env.example .env   # fill in the secrets; DJANGO_DEBUG=true locally
 make up
 uv run python manage.py migrate
@@ -38,7 +41,7 @@ Every variable is required; the app refuses to start if one is missing.
 | Command | Does |
 |---|---|
 | `make up` / `make down` | Start / stop the database |
-| `make lint` | Lint and format check (what CI runs) |
+| `make lint` | Lint and format check |
 | `make format` | Auto-fix lint and formatting |
 | `make typecheck` | Type check (mypy, strict) |
 | `make test` | Run the test suite |
