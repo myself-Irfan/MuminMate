@@ -57,3 +57,16 @@ jobs:
           DJANGO_HTTPS: "true"
           DJANGO_HSTS_SECONDS: "3600"
           DJANGO_SECRET_KEY: ci-deploy-check-only-0123456789abcdefghijklmnopqrstuvwxyz
+      - name: Build Image
+        run: docker build --tag muminmate .
+      - name: Smoke Test Image
+        run: |
+          docker run --rm --network host --env-file <(env | grep -E '^(DJANGO|POSTGRES)_') \
+            muminmate python manage.py migrate --noinput
+          docker run --detach --name web --network host \
+            --env-file <(env | grep -E '^(DJANGO|POSTGRES)_') muminmate
+          curl --fail --retry 10 --retry-delay 1 --retry-all-errors \
+            http://localhost:8000/api/health/ready
+      - name: Web Logs
+        if: failure()
+        run: docker logs web

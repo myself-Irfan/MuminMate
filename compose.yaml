@@ -1,3 +1,11 @@
+x-app: &app
+  build: .
+  image: muminmate
+  env_file: .env
+  environment:
+    POSTGRES_HOST: db
+    POSTGRES_PORT: "5432"
+
 services:
   db:
     image: paradedb/paradedb:0.25.11-pg17
@@ -14,6 +22,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  migrate:
+    <<: *app
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/api/health/live')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 volumes:
   db-data:

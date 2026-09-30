@@ -1,13 +1,16 @@
-.PHONY: run up down test lint format typecheck
+.PHONY: run up down stack test lint format typecheck
 
 run:
 	uv run python manage.py runserver
 
 up:
-	docker compose up -d --wait
+	docker compose up -d --wait db
 
 down:
 	docker compose down
+
+stack:
+	docker compose up -d --build --wait --remove-orphans
 
 test:
 	uv run pytest
