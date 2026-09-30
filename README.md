@@ -2,8 +2,9 @@
 
 A grounded Quran and hadith assistant: every answer cites its sources, or says it couldn't find one.
 
-CI (GitHub Actions) runs pre-commit, mypy, the migration check and the tests, then builds the Docker image and
-smoke-tests it, on every PR.
+CI (GitHub Actions) audits the locked dependencies (pip-audit), runs pre-commit, mypy, the migration check and
+the tests with coverage (at least 95%), then builds and smoke-tests the Docker image, on every PR. Dependabot
+proposes dependency updates monthly.
 
 ## Requirements
 
@@ -50,7 +51,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `make lint` | Lint and format check |
 | `make format` | Auto-fix lint and formatting |
 | `make typecheck` | Type check (mypy, strict) |
-| `make test` | Run the test suite |
+| `make test` | Run the tests with coverage (fails below 95%) |
 
 ## API
 

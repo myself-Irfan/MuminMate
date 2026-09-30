@@ -13,7 +13,7 @@ stack:
 	docker compose up -d --build --wait --remove-orphans
 
 test:
-	uv run pytest
+	uv run pytest --cov
 
 lint:
 	uv run ruff check .
