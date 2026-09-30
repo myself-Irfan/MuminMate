@@ -1,4 +1,7 @@
-.PHONY: up down test lint format typecheck
+.PHONY: run up down test lint format typecheck
+
+run:
+	uv run python manage.py runserver
 
 up:
 	docker compose up -d --wait

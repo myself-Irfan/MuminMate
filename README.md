@@ -41,6 +41,7 @@ Every variable is required; the app refuses to start if one is missing.
 | Command | Does |
 |---|---|
 | `make up` / `make down` | Start / stop the database |
+| `make run` | Start the dev server on :8000 (API docs at `/api/docs`) |
 | `make lint` | Lint and format check |
 | `make format` | Auto-fix lint and formatting |
 | `make typecheck` | Type check (mypy, strict) |
