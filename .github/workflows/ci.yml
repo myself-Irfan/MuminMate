@@ -69,4 +69,4 @@ jobs:
             http://localhost:8000/api/health/ready
       - name: Web Logs
         if: failure()
-        run: docker logs web
+        run: docker logs web || true

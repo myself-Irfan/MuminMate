@@ -21,6 +21,8 @@ RUN DJANGO_SECRET_KEY=collectstatic DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS= \
     POSTGRES_PASSWORD= POSTGRES_HOST= POSTGRES_PORT=0 \
     .venv/bin/python manage.py collectstatic --noinput
 
+RUN .venv/bin/python -m compileall -q .
+
 FROM python:3.13.15-slim-trixie
 
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
