@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "ninja",
     "core",
+    "users",
 ]
 
 MIDDLEWARE = [
@@ -73,6 +74,8 @@ DATABASES = {
         "OPTIONS": {"pool": {"timeout": 5}},
     }
 }
+
+AUTH_USER_MODEL = "users.User"
 
 AUTH_PASSWORD_VALIDATORS = [
     {
