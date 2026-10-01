@@ -21,7 +21,11 @@ cp .env.example .env   # fill in the secrets; DJANGO_DEBUG=true locally
 make up
 uv run python manage.py migrate
 uv run python manage.py check
+uv run python manage.py createsuperuser   # logs in with email, no username
 ```
+
+A database migrated before the custom user model (it has `auth_user`) must be recreated:
+`docker compose down -v && make up`, then migrate. This deletes the local db data.
 
 ## Configuration
 
@@ -66,5 +70,6 @@ Every variable is required; the app refuses to start if one is missing.
 ```
 config/   settings, env, URL and API wiring
 core/     cross-cutting: health checks, Problem+JSON errors
+users/    custom user model (email login, no username) and its manager
 tests/    mirrors the source tree
 ```

@@ -28,6 +28,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 extend-exclude = ["**/migrations"]
+force-exclude = true
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "DJ", "S", "PT", "RUF"]
@@ -49,7 +50,7 @@ testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers", "-ra"]
 
 [tool.coverage.run]
-source = ["config", "core"]
+source = ["config", "core", "users"]
 omit = ["*/migrations/*", "config/asgi.py", "config/wsgi.py"]
 
 [tool.coverage.report]
