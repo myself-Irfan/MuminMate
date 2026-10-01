@@ -57,19 +57,20 @@ Every variable is required; the app refuses to start if one is missing.
 | `make typecheck` | Type check (mypy, strict) |
 | `make test` | Run the tests with coverage (fails below 95%) |
 
-## API
+## Endpoints
 
 | Endpoint | Purpose |
 |---|---|
 | `/api/health/live` | Liveness: the process is up (no dependencies) |
 | `/api/health/ready` | Readiness: database reachable and migrated, else `503` Problem+JSON |
 | `/api/docs` | Interactive OpenAPI docs |
+| `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
 ## Project layout
 
 ```
 config/   settings, env, URL and API wiring
 core/     cross-cutting: health checks, Problem+JSON errors
-users/    custom user model (email login, no username) and its manager
+users/    custom user model (email login, no username), its manager, admin and admin forms
 tests/    mirrors the source tree
 ```

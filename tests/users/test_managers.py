@@ -5,11 +5,6 @@ from django.db import IntegrityError
 from users.models import User
 
 
-@pytest.fixture
-def password() -> str:
-    return "correct-horse-battery-staple"
-
-
 @pytest.mark.django_db
 def test_create_user_normalizes_email(password: str) -> None:
     user = User.objects.create_user(email="  Irfan@Example.COM ", password=password)
