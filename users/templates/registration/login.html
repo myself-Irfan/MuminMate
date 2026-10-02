@@ -4,9 +4,9 @@
 
 {% block content %}
   <article class="card">
-    <p class="greeting" lang="ar" dir="rtl">السَّلَامُ عَلَيْكُمْ</p>
-    <p class="salutation">Assalamu Alaikum</p>
-    {% include "partials/ornament.html" %}
+    <p class="greeting-arabic" lang="ar" dir="rtl">السَّلَامُ عَلَيْكُمْ</p>
+    <p class="greeting-latin">Assalamu Alaikum</p>
+    {% include "partials/divider.html" %}
     <h1>Log in</h1>
     <form method="post">
       {% csrf_token %}
@@ -14,6 +14,6 @@
       <input type="hidden" name="next" value="{{ next }}">
       <button type="submit">Log in</button>
     </form>
-    <p class="note">Staff User? Use the <a href="{% url 'admin:login' %}">admin login</a>.</p>
+    <p class="note">Staff? Use the <a href="{% url 'admin:login' %}">admin login</a>.</p>
   </article>
 {% endblock %}

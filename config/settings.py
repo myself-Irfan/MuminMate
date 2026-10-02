@@ -19,7 +19,7 @@ SECURE_SSL_REDIRECT = env.django_https
 SECURE_REDIRECT_EXEMPT = [r"^api/health/"]
 SESSION_COOKIE_SECURE = env.django_https
 CSRF_COOKIE_SECURE = env.django_https
-# Browsers reject `__Host-` cookies that aren't Secure, so plain names over local HTTP.
+# `__Host-` cookies must be Secure, so plain names over local HTTP.
 SESSION_COOKIE_NAME = "__Host-sessionid" if env.django_https else "sessionid"
 CSRF_COOKIE_NAME = "__Host-csrftoken" if env.django_https else "csrftoken"
 SESSION_COOKIE_AGE = env.django_session_idle_seconds
@@ -51,6 +51,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "users.middleware.SessionTimeoutMiddleware",
+    "users.middleware.ConsumerLoginRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -87,10 +88,11 @@ DATABASES = {
 }
 
 AUTH_USER_MODEL = "users.User"
+LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
 
-# Once real users exist, add new hashers first and never remove one: its hashes stop verifying.
+# With real users, add hashers first and never remove one: its hashes stop verifying.
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.Argon2PasswordHasher",
 ]

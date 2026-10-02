@@ -1,5 +1,4 @@
 import pytest
-from django.contrib.auth.models import Permission
 from django.test import Client
 
 from users.models import User
@@ -11,19 +10,14 @@ def short_password() -> str:
 
 
 @pytest.fixture
-def staff_user(db: None, password: str) -> User:
-    user = User.objects.create_user(email="staff@example.com", password=password, is_staff=True)
-    user.user_permissions.set(
-        Permission.objects.filter(
-            content_type__app_label="users", codename__in=("add_user", "change_user")
-        )
-    )
+def other_staff_user(db: None, password: str) -> User:
+    return User.objects.create_user(email="peer@example.com", password=password, is_staff=True)
+
+
+@pytest.fixture(params=["admin_user", "other_staff_user", "staff_user"])
+def privileged_user(request: pytest.FixtureRequest) -> User:
+    user: User = request.getfixturevalue(request.param)
     return user
-
-
-@pytest.fixture
-def non_staff_superuser(db: None, password: str) -> User:
-    return User.objects.create_user(email="root@example.com", password=password, is_superuser=True)
 
 
 @pytest.fixture

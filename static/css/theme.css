@@ -16,7 +16,7 @@
 }
 
 :root {
-  /* The logo everywhere: rub-el-hizb.svg, crescent.svg or slim-crescent.svg (and img/favicon.svg). */
+  /* Logo: rub-el-hizb.svg, crescent.svg or slim-crescent.svg (also img/favicon.svg). */
   --mm-logo: url("../img/logos/rub-el-hizb.svg");
   --mm-font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
   --pico-font-family: var(--pico-font-family-sans-serif);
@@ -105,7 +105,7 @@ body::before {
   pointer-events: none;
   opacity: var(--mm-pattern-opacity);
   background-color: var(--mm-gold);
-  mask: url("../img/girih-tile.svg") 0 0 / 96px 96px repeat;
+  mask: url("../img/star-lattice.svg") 0 0 / 96px 96px repeat;
 }
 
 h1,
@@ -116,7 +116,7 @@ h3 {
   letter-spacing: 0.01em;
 }
 
-/* Vertical spacing shrinks with viewport height so the page fits laptop screens. */
+/* Vertical spacing follows viewport height so pages fit laptops. */
 body > header {
   --pico-nav-element-spacing-vertical: clamp(0.25rem, 1.2vh, 1rem);
   padding-block: clamp(0.25rem, 1.5vh, 1rem);
@@ -178,27 +178,27 @@ nav [type="submit"]:focus-visible {
   --pico-color: var(--pico-primary-hover);
 }
 
-.ornament {
+.divider {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   margin: 0.25rem 0 1.75rem;
 }
 
-.ornament::before,
-.ornament::after {
+.divider::before,
+.divider::after {
   content: "";
   flex: 1;
   height: 1px;
   background: linear-gradient(to right, transparent, var(--mm-gold), transparent);
 }
 
-.ornament .logo {
+.divider .logo {
   width: 0.9rem;
   height: 0.9rem;
 }
 
-.greeting {
+.greeting-arabic {
   margin: 0;
   font-family: "Amiri", serif;
   font-size: 1.6rem;
@@ -206,7 +206,7 @@ nav [type="submit"]:focus-visible {
   color: var(--mm-gold-text);
 }
 
-.salutation {
+.greeting-latin {
   margin: 0.25rem 0 0.5rem;
   font-family: var(--mm-font-display);
   font-size: 2rem;
@@ -228,12 +228,12 @@ nav [type="submit"]:focus-visible {
   margin-bottom: 0.5rem;
 }
 
-.card .ornament:has(+ h1) {
+.card .divider:has(+ h1) {
   margin-bottom: 0.75rem;
 }
 
 /* A heading under the card's divider is the page's label (login), not its title. */
-.card .ornament + h1 {
+.card .divider + h1 {
   margin-top: 0;
   margin-bottom: 1rem;
   font-size: 1.25rem;
@@ -261,11 +261,11 @@ nav [type="submit"]:focus-visible {
     margin-top: 0.75rem;
   }
 
-  .greeting {
+  .greeting-arabic {
     font-size: 1.35rem;
   }
 
-  .ornament {
+  .divider {
     margin-bottom: 1rem;
   }
 }

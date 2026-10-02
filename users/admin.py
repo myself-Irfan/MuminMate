@@ -57,4 +57,4 @@ class UserAdmin(auth_admin.UserAdmin[User]):
     def _can_manage(self, request: HttpRequest, target: User | None) -> bool:
         if target is None or request.user.is_superuser:
             return True
-        return not (target.is_staff or target.is_superuser)
+        return not target.is_privileged

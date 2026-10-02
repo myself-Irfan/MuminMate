@@ -53,11 +53,10 @@ def test_login_rotates_session_key(client: Client, login_payload: dict[str, str]
         {"username": "irfan@example.com", "password": "wrong-placeholder-password"},
         {"username": "nobody@example.com", "password": "placeholder-password"},
         {"username": "staff@example.com", "password": "placeholder-password"},
-        {"username": "root@example.com", "password": "placeholder-password"},
     ],
-    ids=["wrong_password", "unknown_email", "staff_account", "superuser_account"],
+    ids=["wrong_password", "unknown_email", "staff_account"],
 )
-@pytest.mark.usefixtures("consumer_user", "staff_user", "non_staff_superuser")
+@pytest.mark.usefixtures("consumer_user", "staff_user")
 def test_login_fails_with_same_error(client: Client, credentials: dict[str, str]) -> None:
     response = client.post("/accounts/login/", credentials)
 

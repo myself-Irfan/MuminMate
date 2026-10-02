@@ -12,11 +12,6 @@ from users.models import User
 
 
 @pytest.fixture
-def other_staff_user(db: None, password: str) -> User:
-    return User.objects.create_user(email="peer@example.com", password=password, is_staff=True)
-
-
-@pytest.fixture
 def add_payload(password: str) -> dict[str, str]:
     return {"usable_password": "true", "password1": password, "password2": password}
 
@@ -28,12 +23,6 @@ def password_payload() -> dict[str, str]:
         "password1": "new-placeholder-password",
         "password2": "new-placeholder-password",
     }
-
-
-@pytest.fixture(params=["admin_user", "other_staff_user", "staff_user", "non_staff_superuser"])
-def staff_row(request: pytest.FixtureRequest) -> User:
-    user: User = request.getfixturevalue(request.param)
-    return user
 
 
 def test_add_form_has_email_and_no_username(admin_client: Client) -> None:
@@ -148,6 +137,22 @@ def test_change_grants_staff_when_superuser(admin_client: Client, consumer_user:
     assert consumer_user.is_staff
 
 
+def test_change_fails_when_superuser_loses_staff(admin_client: Client, password: str) -> None:
+    other = User.objects.create_superuser(email="other@example.com", password=password)
+
+    response = admin_client.post(
+        f"/admin/users/user/{other.pk}/change/",
+        {"email": "other@example.com", "is_active": "on", "is_superuser": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["adminform"].form.non_field_errors() == [
+        "A superuser must also be staff."
+    ]
+    other.refresh_from_db()
+    assert other.is_staff
+
+
 def test_change_form_privilege_fields_read_only_when_staff(
     staff_client: Client, consumer_user: User
 ) -> None:
@@ -174,40 +179,44 @@ def test_change_ignores_privilege_fields_when_staff(
     assert not consumer_user.is_superuser
 
 
-def test_change_forbidden_when_staff_edits_staff_row(staff_client: Client, staff_row: User) -> None:
-    email = staff_row.email
+def test_change_forbidden_when_staff_edits_privileged_user(
+    staff_client: Client, privileged_user: User
+) -> None:
+    email = privileged_user.email
 
     response = staff_client.post(
-        f"/admin/users/user/{staff_row.pk}/change/",
+        f"/admin/users/user/{privileged_user.pk}/change/",
         {"email": "taken-over@example.com", "is_active": "on"},
     )
 
     assert response.status_code == HTTPStatus.FORBIDDEN
-    staff_row.refresh_from_db()
-    assert staff_row.email == email
+    privileged_user.refresh_from_db()
+    assert privileged_user.email == email
 
 
-def test_password_change_forbidden_when_staff_edits_staff_row(
-    staff_client: Client, staff_row: User, password_payload: dict[str, str]
+def test_password_change_forbidden_when_staff_edits_privileged_user(
+    staff_client: Client, privileged_user: User, password_payload: dict[str, str]
 ) -> None:
-    response = staff_client.post(f"/admin/users/user/{staff_row.pk}/password/", password_payload)
+    response = staff_client.post(
+        f"/admin/users/user/{privileged_user.pk}/password/", password_payload
+    )
 
     assert response.status_code == HTTPStatus.FORBIDDEN
-    staff_row.refresh_from_db()
-    assert not staff_row.check_password(password_payload["password1"])
+    privileged_user.refresh_from_db()
+    assert not privileged_user.check_password(password_payload["password1"])
 
 
-def test_delete_forbidden_when_staff_deletes_staff_row(
-    staff_client: Client, staff_user: User, staff_row: User
+def test_delete_forbidden_when_staff_deletes_privileged_user(
+    staff_client: Client, staff_user: User, privileged_user: User
 ) -> None:
     staff_user.user_permissions.add(
         Permission.objects.get(content_type__app_label="users", codename="delete_user")
     )
 
-    response = staff_client.post(f"/admin/users/user/{staff_row.pk}/delete/", {"post": "yes"})
+    response = staff_client.post(f"/admin/users/user/{privileged_user.pk}/delete/", {"post": "yes"})
 
     assert response.status_code == HTTPStatus.FORBIDDEN
-    assert User.objects.filter(pk=staff_row.pk).exists()
+    assert User.objects.filter(pk=privileged_user.pk).exists()
 
 
 def test_password_change_sets_password(
