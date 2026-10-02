@@ -17,11 +17,6 @@ def other_staff_user(db: None, password: str) -> User:
 
 
 @pytest.fixture
-def non_staff_superuser(db: None, password: str) -> User:
-    return User.objects.create_user(email="root@example.com", password=password, is_superuser=True)
-
-
-@pytest.fixture
 def add_payload(password: str) -> dict[str, str]:
     return {"usable_password": "true", "password1": password, "password2": password}
 

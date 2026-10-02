@@ -3,12 +3,17 @@
 {% block title %}Log in - MuminMate{% endblock %}
 
 {% block content %}
-  <h1>Log in</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form }}
-    <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit">Log in</button>
-  </form>
-  <p>Staff? Use the <a href="{% url 'admin:login' %}">admin login</a>.</p>
+  <article class="card">
+    <p class="greeting" lang="ar" dir="rtl">السَّلَامُ عَلَيْكُمْ</p>
+    <p class="salutation">Assalamu Alaikum</p>
+    {% include "partials/ornament.html" %}
+    <h1>Log in</h1>
+    <form method="post">
+      {% csrf_token %}
+      {{ form }}
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit">Log in</button>
+    </form>
+    <p class="note">Staff User? Use the <a href="{% url 'admin:login' %}">admin login</a>.</p>
+  </article>
 {% endblock %}

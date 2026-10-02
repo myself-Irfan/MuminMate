@@ -14,6 +14,13 @@ def login_payload(consumer_user: User, password: str) -> dict[str, str]:
 
 
 @pytest.mark.django_db
+def test_login_page_email_field_is_email_type(client: Client) -> None:
+    response = client.get("/accounts/login/")
+
+    assertContains(response, 'type="email" name="username"')
+
+
+@pytest.mark.django_db
 def test_login_page_links_staff_to_admin_login(client: Client) -> None:
     response = client.get("/accounts/login/")
 
@@ -46,10 +53,11 @@ def test_login_rotates_session_key(client: Client, login_payload: dict[str, str]
         {"username": "irfan@example.com", "password": "wrong-placeholder-password"},
         {"username": "nobody@example.com", "password": "placeholder-password"},
         {"username": "staff@example.com", "password": "placeholder-password"},
+        {"username": "root@example.com", "password": "placeholder-password"},
     ],
-    ids=["wrong_password", "unknown_email", "staff_account"],
+    ids=["wrong_password", "unknown_email", "staff_account", "superuser_account"],
 )
-@pytest.mark.usefixtures("consumer_user", "staff_user")
+@pytest.mark.usefixtures("consumer_user", "staff_user", "non_staff_superuser")
 def test_login_fails_with_same_error(client: Client, credentials: dict[str, str]) -> None:
     response = client.post("/accounts/login/", credentials)
 

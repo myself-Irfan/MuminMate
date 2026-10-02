@@ -1,0 +1,271 @@
+@font-face {
+  font-family: "Amiri";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/amiri/arabic-400-normal.woff2") format("woff2");
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
+@font-face {
+  font-family: "Cormorant Garamond";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../fonts/cormorant-garamond/latin-600-normal.woff2") format("woff2");
+}
+
+:root {
+  /* The logo everywhere: rub-el-hizb.svg, crescent.svg or slim-crescent.svg (and img/favicon.svg). */
+  --mm-logo: url("../img/logos/rub-el-hizb.svg");
+  --mm-font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --pico-font-family: var(--pico-font-family-sans-serif);
+  --pico-border-radius: 0.375rem;
+  /* Pico grows the root font to 131% on wide screens; cap it so cards stay compact. */
+  --pico-font-size: 100%;
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --pico-font-size: 106.25%;
+  }
+}
+
+/* Same selectors as Pico's, so these win by source order. */
+:root:not([data-theme="dark"]),
+[data-theme="light"] {
+  --mm-gold: #a8834a;
+  --mm-gold-text: #8a6934;
+  --mm-pattern-opacity: 0.07;
+  --pico-background-color: #faf7f0;
+  --pico-color: #26302e;
+  --pico-muted-color: #686c64;
+  --pico-muted-border-color: #e6dfcf;
+  --pico-primary: #0e5c4a;
+  --pico-primary-background: #0e5c4a;
+  --pico-primary-underline: rgba(14, 92, 74, 0.4);
+  --pico-primary-hover: #0a4739;
+  --pico-primary-hover-background: #0a4739;
+  --pico-primary-focus: rgba(14, 92, 74, 0.25);
+  --pico-primary-inverse: #fffdf8;
+  --pico-h1-color: #12382f;
+  --pico-h2-color: #12382f;
+  --pico-card-background-color: #fffdf8;
+  --pico-form-element-background-color: #fffdf8;
+  --pico-form-element-active-background-color: #ffffff;
+  --pico-form-element-border-color: #9c8f73;
+  --pico-form-element-focus-color: var(--pico-primary);
+  --pico-text-selection-color: rgba(168, 131, 74, 0.25);
+}
+
+@media only screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --mm-gold: #c9a76a;
+    --mm-gold-text: #c9a76a;
+    --mm-pattern-opacity: 0.05;
+    --pico-background-color: #0c1613;
+    --pico-color: #e9e3d3;
+    --pico-muted-color: #a39e8f;
+    --pico-muted-border-color: #24302b;
+    --pico-primary: #7cc6a8;
+    --pico-primary-background: #3d9a7b;
+    --pico-primary-underline: rgba(124, 198, 168, 0.4);
+    --pico-primary-hover: #a3dcc4;
+    --pico-primary-hover-background: #4fae8d;
+    --pico-primary-focus: rgba(124, 198, 168, 0.3);
+    --pico-primary-inverse: #0c1613;
+    --pico-h1-color: #f3ecda;
+    --pico-h2-color: #f3ecda;
+    --pico-card-background-color: #111e1a;
+    --pico-form-element-background-color: #0f1b17;
+    --pico-form-element-active-background-color: #13221d;
+    --pico-form-element-border-color: #5b6e65;
+    --pico-form-element-focus-color: var(--pico-primary);
+    --pico-text-selection-color: rgba(201, 167, 106, 0.3);
+  }
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-image: linear-gradient(
+    var(--pico-background-color),
+    color-mix(in srgb, var(--pico-background-color) 92%, var(--mm-gold))
+  );
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--mm-pattern-opacity);
+  background-color: var(--mm-gold);
+  mask: url("../img/girih-tile.svg") 0 0 / 96px 96px repeat;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--mm-font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Vertical spacing shrinks with viewport height so the page fits laptop screens. */
+body > header {
+  --pico-nav-element-spacing-vertical: clamp(0.25rem, 1.2vh, 1rem);
+  padding-block: clamp(0.25rem, 1.5vh, 1rem);
+  padding-inline: clamp(1rem, 3vw, 2.5rem);
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+body > main {
+  padding-block: clamp(0.5rem, 2vh, 1rem);
+}
+
+/* Pages built around one card (login, home) sit in the vertical centre. */
+body > main:has(> .card) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--mm-font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--pico-h1-color);
+  text-decoration: none;
+}
+
+.logo {
+  display: inline-block;
+  flex: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  background-color: var(--mm-gold);
+  mask: var(--mm-logo) center / contain no-repeat;
+}
+
+nav form {
+  margin: 0;
+}
+
+nav [type="submit"] {
+  --pico-background-color: transparent;
+  --pico-border-color: var(--pico-muted-border-color);
+  --pico-color: var(--pico-primary);
+  width: auto;
+  margin: 0;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+nav [type="submit"]:hover,
+nav [type="submit"]:focus-visible {
+  --pico-background-color: transparent;
+  --pico-border-color: var(--pico-primary);
+  --pico-color: var(--pico-primary-hover);
+}
+
+.ornament {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.25rem 0 1.75rem;
+}
+
+.ornament::before,
+.ornament::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--mm-gold), transparent);
+}
+
+.ornament .logo {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.greeting {
+  margin: 0;
+  font-family: "Amiri", serif;
+  font-size: 1.6rem;
+  line-height: 1.4;
+  color: var(--mm-gold-text);
+}
+
+.salutation {
+  margin: 0.25rem 0 0.5rem;
+  font-family: var(--mm-font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--pico-h1-color);
+}
+
+.card {
+  width: 100%;
+  max-width: 24rem;
+  margin: clamp(0.75rem, 4vh, 3rem) auto;
+  padding: clamp(1.25rem, 4vh, 2.5rem) 2rem clamp(1rem, 3vh, 2rem);
+  border-top: 2px solid var(--mm-gold);
+  text-align: center;
+}
+
+.card h1 {
+  margin-bottom: 0.5rem;
+}
+
+.card .ornament:has(+ h1) {
+  margin-bottom: 0.75rem;
+}
+
+/* A heading under the card's divider is the page's label (login), not its title. */
+.card .ornament + h1 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+  color: var(--pico-muted-color);
+}
+
+.card form {
+  text-align: start;
+}
+
+.note {
+  margin: 1.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--pico-muted-color);
+}
+
+@media (max-height: 760px) {
+  :root {
+    --pico-form-element-spacing-vertical: 0.5rem;
+    --pico-typography-spacing-vertical: 0.6rem;
+  }
+
+  .note {
+    margin-top: 0.75rem;
+  }
+
+  .greeting {
+    font-size: 1.35rem;
+  }
+
+  .ornament {
+    margin-bottom: 1rem;
+  }
+}

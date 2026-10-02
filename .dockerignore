@@ -9,6 +9,7 @@
 **/*.md
 tests/
 staticfiles/
+design/
 **/__pycache__
 .mypy_cache/
 .ruff_cache/

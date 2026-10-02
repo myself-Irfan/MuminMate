@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-  {% if user.is_authenticated %}
-    <p>Logged in as {{ user.email }}</p>
-  {% else %}
-    <p><a href="{% url 'login' %}">Log in</a></p>
-  {% endif %}
+  <article class="card">
+    <h1>Welcome</h1>
+    {% include "partials/ornament.html" %}
+    {% if user.is_authenticated %}
+      <p>Logged in as {{ user.email }}</p>
+    {% else %}
+      <p><a href="{% url 'login' %}">Log in</a></p>
+    {% endif %}
+  </article>
 {% endblock %}

@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib.auth import forms as auth_forms
 
 from users.models import User
@@ -16,7 +17,9 @@ class UserAdminChangeForm(auth_forms.UserChangeForm[User]):
 
 
 class ConsumerAuthenticationForm(auth_forms.AuthenticationForm):
+    username = auth_forms.UsernameField(widget=forms.EmailInput(attrs={"autofocus": True}))
+
     def confirm_login_allowed(self, user: User) -> None:
         super().confirm_login_allowed(user)
-        if user.is_staff:
+        if user.is_staff or user.is_superuser:
             raise self.get_invalid_login_error()
