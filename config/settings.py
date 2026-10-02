@@ -19,6 +19,11 @@ SECURE_SSL_REDIRECT = env.django_https
 SECURE_REDIRECT_EXEMPT = [r"^api/health/"]
 SESSION_COOKIE_SECURE = env.django_https
 CSRF_COOKIE_SECURE = env.django_https
+# Browsers reject `__Host-` cookies that aren't Secure, so plain names over local HTTP.
+SESSION_COOKIE_NAME = "__Host-sessionid" if env.django_https else "sessionid"
+CSRF_COOKIE_NAME = "__Host-csrftoken" if env.django_https else "csrftoken"
+SESSION_COOKIE_AGE = env.django_session_idle_seconds
+SESSION_ABSOLUTE_AGE = env.django_session_absolute_seconds
 SECURE_HSTS_SECONDS = env.django_hsts_seconds
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.django_hsts_seconds > 0
 # HSTS preload is near-irreversible and needs a real domain; revisit at release.
@@ -44,6 +49,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "users.middleware.SessionTimeoutMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -75,8 +81,7 @@ DATABASES = {
         "PASSWORD": env.postgres_password.get_secret_value(),
         "HOST": env.postgres_host,
         "PORT": env.postgres_port,
-        # Fail fast (default 30 s) so /ready answers before the probe times out.
-        "OPTIONS": {"pool": {"timeout": 5}},
+        "OPTIONS": {"pool": {"timeout": env.postgres_pool_timeout_seconds}},
     }
 }
 
