@@ -81,6 +81,22 @@ def test_add_fails_when_email_taken_in_other_case(
     assert User.objects.filter(email="irfan@example.com").count() == 1
 
 
+def test_add_fails_when_password_too_short(admin_client: Client, short_password: str) -> None:
+    response = admin_client.post(
+        "/admin/users/user/add/",
+        {
+            "email": "new@example.com",
+            "usable_password": "true",
+            "password1": short_password,
+            "password2": short_password,
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert "password2" in response.context["adminform"].form.errors
+    assert not User.objects.filter(email="new@example.com").exists()
+
+
 def test_add_succeeds_when_staff_with_permission(
     staff_client: Client, add_payload: dict[str, str]
 ) -> None:
@@ -214,6 +230,20 @@ def test_password_change_sets_password(
     assert response.status_code == HTTPStatus.FOUND
     consumer_user.refresh_from_db()
     assert consumer_user.check_password(password_payload["password1"])
+
+
+def test_password_change_fails_when_password_too_short(
+    admin_client: Client, consumer_user: User, password: str, short_password: str
+) -> None:
+    response = admin_client.post(
+        f"/admin/users/user/{consumer_user.pk}/password/",
+        {"usable_password": "true", "password1": short_password, "password2": short_password},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert "password2" in response.context["form"].errors
+    consumer_user.refresh_from_db()
+    assert consumer_user.check_password(password)
 
 
 def test_changelist_search_matches_email(

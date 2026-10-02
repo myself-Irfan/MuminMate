@@ -11,6 +11,11 @@ def password() -> str:
 
 
 @pytest.fixture
+def short_password() -> str:
+    return "quiet-7"
+
+
+@pytest.fixture
 def staff_user(db: None, password: str) -> User:
     user = User.objects.create_user(email="staff@example.com", password=password, is_staff=True)
     user.user_permissions.set(

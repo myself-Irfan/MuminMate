@@ -5,7 +5,7 @@ description = "Grounded Quran and hadith assistant with cited, confidence-gated 
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "django>=5.2,<5.3",
+    "django[argon2]>=5.2,<5.3",
     "django-ninja>=1.7,<2",
     "django-stubs-ext>=6.1,<7",
     "psycopg[binary,pool]>=3.3,<4",
@@ -39,6 +39,7 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "DJ", "S", "PT", "RUF"]
 
 [tool.mypy]
 strict = true
+# Else the two conftest.py (no __init__.py, importlib mode) clash as modules.
 explicit_package_bases = true
 plugins = ["mypy_django_plugin.main", "pydantic.mypy"]
 exclude = ["migrations/"]

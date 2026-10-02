@@ -66,6 +66,12 @@ Every variable is required; the app refuses to start if one is missing.
 | `/api/docs` | Interactive OpenAPI docs |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
+## Passwords
+
+Hashed with Argon2id. A password needs at least 8 characters, and is rejected if it's common, entirely
+numeric or too similar to the email. `createsuperuser --noinput` (`DJANGO_SUPERUSER_PASSWORD`) skips
+these checks, as Django does: choose a strong password.
+
 ## Project layout
 
 ```
