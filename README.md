@@ -2,9 +2,11 @@
 
 A grounded Quran and hadith assistant: every answer cites its sources, or says it couldn't find one.
 
-CI (GitHub Actions) audits the locked dependencies (pip-audit), runs pre-commit, mypy, the migration check and
-the tests with coverage (at least 95%), then builds and smoke-tests the Docker image, on every PR. Dependabot
-proposes dependency updates monthly.
+CI (GitHub Actions) audits the locked dependencies (pip-audit), runs pre-commit (including zizmor on the
+workflows), mypy, the migration check and the tests with coverage (at least 95%), then builds the Docker image,
+scans it with Trivy (fails on fixable HIGH/CRITICAL) and smoke-tests it (readiness, the login page and its
+static files), on every PR. Actions are pinned to commit SHAs and images to digests; Dependabot proposes
+updates monthly.
 
 ## Requirements
 

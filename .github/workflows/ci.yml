@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 10
     services:
       db:
-        image: paradedb/paradedb:0.25.11-pg17
+        image: paradedb/paradedb:0.25.11-pg17@sha256:78d65750f0f88a56548526201bcab9910f83b90fe929cdbf979890f3f80b0f95
         env:
           POSTGRES_DB: muminmate
           POSTGRES_USER: muminmate
@@ -94,6 +94,13 @@ jobs:
           DJANGO_SECRET_KEY: ci-deploy-check-only-0123456789abcdefghijklmnopqrstuvwxyz
       - name: Build Image
         run: docker build --tag muminmate .
+      # A saved tar, not the Docker socket: the scanner gets no access to the daemon.
+      - name: Scan Image
+        run: |
+          docker save muminmate:latest --output image.tar
+          docker run --rm --volume "$PWD/image.tar:/image.tar:ro" \
+            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa \
+            image --input /image.tar --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress
       - name: Smoke Test Image
         run: |
           docker run --rm --network host --env-file <(env | grep -E '^(DJANGO|POSTGRES)_') \
@@ -102,6 +109,14 @@ jobs:
             --env-file <(env | grep -E '^(DJANGO|POSTGRES)_') muminmate
           curl --fail --retry 10 --retry-delay 1 --retry-all-errors \
             http://localhost:8000/api/health/ready
+      - name: Smoke Test Static Files
+        run: |
+          assets=$(curl --fail --silent --show-error http://localhost:8000/accounts/login/ \
+            | grep -oE '(href|src)="/static/[^"]+"' | cut -d'"' -f2)
+          [ -n "$assets" ] || { echo "Login page references no static files" >&2; exit 1; }
+          for asset in $assets; do
+            curl --fail --silent --show-error --output /dev/null "http://localhost:8000$asset"
+          done
       - name: Web Logs
         if: failure()
         run: docker logs web || true
