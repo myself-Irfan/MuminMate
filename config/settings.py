@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "ninja",
     "core",
     "users",
+    "web",
 ]
 
 MIDDLEWARE = [
@@ -59,7 +60,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -86,6 +87,8 @@ DATABASES = {
 }
 
 AUTH_USER_MODEL = "users.User"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"
 
 # Once real users exist, add new hashers first and never remove one: its hashes stop verifying.
 PASSWORD_HASHERS = [

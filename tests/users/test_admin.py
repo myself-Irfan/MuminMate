@@ -12,11 +12,6 @@ from users.models import User
 
 
 @pytest.fixture
-def consumer_user(db: None, password: str) -> User:
-    return User.objects.create_user(email="irfan@example.com", password=password)
-
-
-@pytest.fixture
 def other_staff_user(db: None, password: str) -> User:
     return User.objects.create_user(email="peer@example.com", password=password, is_staff=True)
 

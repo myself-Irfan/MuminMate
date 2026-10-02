@@ -6,11 +6,6 @@ from users.models import User
 
 
 @pytest.fixture
-def password() -> str:
-    return "placeholder-password"
-
-
-@pytest.fixture
 def short_password() -> str:
     return "quiet-7"
 
