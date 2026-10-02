@@ -67,6 +67,9 @@ Every variable is required; the app refuses to start if one is missing.
 | `/api/health/live` | Liveness: the process is up (no dependencies) |
 | `/api/health/ready` | Readiness: database reachable and migrated, else `503` Problem+JSON |
 | `/api/docs` | Interactive OpenAPI docs |
+| `/` | Home: links to login, or shows who is logged in |
+| `/accounts/login/` | Consumer login (staff accounts are refused; they use `/admin/`) |
+| `/accounts/logout/` | Log out (POST only) |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
 ## Passwords
@@ -85,8 +88,10 @@ idle limit. With `DJANGO_HTTPS=true` the cookies are named `__Host-sessionid` an
 ## Project layout
 
 ```
-config/   settings, env, URL and API wiring
-core/     cross-cutting: health checks, Problem+JSON errors
-users/    custom user model (email login, no username), manager, admin, session timeouts
-tests/    mirrors the source tree
+config/    settings, env, URL and API wiring
+core/      cross-cutting: health checks, Problem+JSON errors
+users/     custom user model (email login, no username), manager, admin, login/logout, session timeouts
+web/       server-rendered pages (home)
+templates/ shared layout (base.html)
+tests/     mirrors the source tree
 ```
