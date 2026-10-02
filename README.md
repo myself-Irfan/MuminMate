@@ -38,11 +38,14 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames the app serves |
 | `DJANGO_HTTPS` | `true` only when served over HTTPS (redirect + secure cookies) |
 | `DJANGO_HSTS_SECONDS` | HSTS max-age; `0` locally, start production at `3600` |
+| `DJANGO_SESSION_IDLE_SECONDS` | Log out after this long without a request (`10800` = 3 h) |
+| `DJANGO_SESSION_ABSOLUTE_SECONDS` | Log out this long after login, even if active (`43200` = 12 h); at least the idle value |
 | `POSTGRES_DB` | Database name |
 | `POSTGRES_USER` | Database user |
 | `POSTGRES_PASSWORD` | Database password |
 | `POSTGRES_HOST` | `localhost` from the host; the service name inside compose |
 | `POSTGRES_PORT` | Host port mapped to the db container |
+| `POSTGRES_POOL_TIMEOUT_SECONDS` | Wait for a pooled connection; keep below the readiness probe timeout (`5`) |
 
 ## Commands
 
@@ -72,11 +75,18 @@ Hashed with Argon2id. A password needs at least 8 characters, and is rejected if
 numeric or too similar to the email. `createsuperuser --noinput` (`DJANGO_SUPERUSER_PASSWORD`) skips
 these checks, as Django does: choose a strong password.
 
+## Sessions
+
+Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE_SECONDS` without a
+request, and `DJANGO_SESSION_ABSOLUTE_SECONDS` after login even if active (logging in again restarts
+it). Activity renews the session at most every 5 minutes, so it can end up to 5 minutes before the
+idle limit. With `DJANGO_HTTPS=true` the cookies are named `__Host-sessionid` and `__Host-csrftoken`.
+
 ## Project layout
 
 ```
 config/   settings, env, URL and API wiring
 core/     cross-cutting: health checks, Problem+JSON errors
-users/    custom user model (email login, no username), its manager, admin and admin forms
+users/    custom user model (email login, no username), manager, admin, session timeouts
 tests/    mirrors the source tree
 ```
