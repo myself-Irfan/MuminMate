@@ -68,7 +68,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `/api/health/ready` | Readiness: database reachable and migrated, else `503` Problem+JSON |
 | `/api/docs` | Interactive OpenAPI docs |
 | `/` | Home: links to login, or shows who is logged in |
-| `/accounts/login/` | Consumer login (staff accounts are refused; they use `/admin/`) |
+| `/accounts/login/` | Consumer login (staff and superuser accounts are refused; they use `/admin/`) |
 | `/accounts/logout/` | Log out (POST only) |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
@@ -85,6 +85,15 @@ request, and `DJANGO_SESSION_ABSOLUTE_SECONDS` after login even if active (loggi
 it). Activity renews the session at most every 5 minutes, so it can end up to 5 minutes before the
 idle limit. With `DJANGO_HTTPS=true` the cookies are named `__Host-sessionid` and `__Host-csrftoken`.
 
+## Look and feel
+
+Server-rendered pages styled with [Pico CSS](https://picocss.com) 2.1.1 (classless, fluid) plus
+`static/css/theme.css`: ivory, emerald and gold, with dark mode following the device. Headings use
+Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything is self-hosted under
+`static/` (no CDN); licences sit next to each file. The logo is one variable, `--mm-logo` in `theme.css`
+(`rub-el-hizb.svg`, `crescent.svg` or `slim-crescent.svg`); the browser-tab icon is
+`static/img/favicon.svg`.
+
 ## Project layout
 
 ```
@@ -93,5 +102,6 @@ core/      cross-cutting: health checks, Problem+JSON errors
 users/     custom user model (email login, no username), manager, admin, login/logout, session timeouts
 web/       server-rendered pages (home)
 templates/ shared layout (base.html)
+static/    CSS, fonts, logos (self-hosted, with licences)
 tests/     mirrors the source tree
 ```

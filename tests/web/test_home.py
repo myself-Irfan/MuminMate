@@ -23,3 +23,11 @@ def test_home_shows_email_and_logout_when_logged_in(client: Client, consumer_use
 
     assertContains(response, consumer_user.email)
     assertContains(response, 'action="/accounts/logout/"')
+
+
+@pytest.mark.django_db
+def test_home_loads_pico_and_theme_stylesheets(client: Client) -> None:
+    response = client.get("/")
+
+    assertContains(response, 'href="/static/vendor/pico/pico.fluid.classless.min.css"')
+    assertContains(response, 'href="/static/css/theme.css"')
