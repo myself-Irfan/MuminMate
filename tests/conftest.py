@@ -1,4 +1,5 @@
 import pytest
+from django.contrib.auth.models import Permission
 from pytest_django import Settings
 
 from users.models import User
@@ -21,3 +22,14 @@ def password() -> str:
 @pytest.fixture
 def consumer_user(db: None, password: str) -> User:
     return User.objects.create_user(email="irfan@example.com", password=password)
+
+
+@pytest.fixture
+def staff_user(db: None, password: str) -> User:
+    user = User.objects.create_user(email="staff@example.com", password=password, is_staff=True)
+    user.user_permissions.set(
+        Permission.objects.filter(
+            content_type__app_label="users", codename__in=("add_user", "change_user")
+        )
+    )
+    return user

@@ -21,5 +21,5 @@ class ConsumerAuthenticationForm(auth_forms.AuthenticationForm):
 
     def confirm_login_allowed(self, user: User) -> None:
         super().confirm_login_allowed(user)
-        if user.is_staff or user.is_superuser:
+        if user.is_privileged:
             raise self.get_invalid_login_error()

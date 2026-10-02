@@ -64,13 +64,21 @@ Every variable is required; the app refuses to start if one is missing.
 
 | Endpoint | Purpose |
 |---|---|
-| `/api/health/live` | Liveness: the process is up (no dependencies) |
-| `/api/health/ready` | Readiness: database reachable and migrated, else `503` Problem+JSON |
-| `/api/docs` | Interactive OpenAPI docs |
-| `/` | Home: links to login, or shows who is logged in |
+| `/api/health/live` | Liveness: the process is up (no dependencies; public) |
+| `/api/health/ready` | Readiness: database reachable and migrated, else `503` Problem+JSON (public) |
+| `/api/docs` | Interactive OpenAPI docs (staff only) |
+| `/` | Home: shows who is logged in |
 | `/accounts/login/` | Consumer login (staff and superuser accounts are refused; they use `/admin/`) |
 | `/accounts/logout/` | Log out (POST only) |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
+
+## Access
+
+Deny by default. Every page requires login (Django's `LoginRequiredMiddleware`, extended in
+`users/middleware.py`); a public page opts out with `@login_not_required`. Every API endpoint requires a
+session (Ninja `django_auth`, CSRF-checked); a public router opts out with `auth=None` (only health).
+Staff and superusers use separate accounts: every consumer page, public ones included, sends them to
+`/admin/`, which has its own login and logout. A superuser must be staff (a database constraint).
 
 ## Passwords
 
@@ -82,7 +90,7 @@ these checks, as Django does: choose a strong password.
 
 Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE_SECONDS` without a
 request, and `DJANGO_SESSION_ABSOLUTE_SECONDS` after login even if active (logging in again restarts
-it). Activity renews the session at most every 5 minutes, so it can end up to 5 minutes before the
+it). Activity refreshes the session at most every 5 minutes, so it can end up to 5 minutes before the
 idle limit. With `DJANGO_HTTPS=true` the cookies are named `__Host-sessionid` and `__Host-csrftoken`.
 
 ## Look and feel

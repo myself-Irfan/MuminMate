@@ -55,15 +55,15 @@ def test_request_skips_session_save_within_refresh_interval(
 def test_request_refreshes_session_after_refresh_interval(
     client: Client, admin_user: User, clock: Mock, settings: Settings
 ) -> None:
-    renewed_at = 1_000_000 + SessionTimeoutMiddleware.refresh_interval_seconds
+    refreshed_at = 1_000_000 + SessionTimeoutMiddleware.refresh_interval_seconds
     client.force_login(admin_user)
-    clock.return_value = renewed_at
+    clock.return_value = refreshed_at
 
     response = client.get("/admin/")
 
     assert response.status_code == HTTPStatus.OK
     assert settings.SESSION_COOKIE_NAME in response.cookies
-    assert client.session[SessionKey.REFRESHED_AT] == renewed_at
+    assert client.session[SessionKey.REFRESHED_AT] == refreshed_at
 
 
 def test_request_refresh_extends_session_expiry(

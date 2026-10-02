@@ -25,6 +25,11 @@ class User(AbstractBaseUser, PermissionsMixin):
                 condition=models.Q(email=Lower("email")) & ~models.Q(email__regex=r"\s"),
                 name="users_email_normalized",
             ),
+            models.CheckConstraint(
+                condition=~models.Q(is_superuser=True, is_staff=False),
+                name="users_is_superuser_requires_staff",
+                violation_error_message="A superuser must also be staff.",
+            ),
         )
 
     def __str__(self) -> str:
@@ -37,3 +42,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_email_verified(self) -> bool:
         return self.email_verified_at is not None
+
+    @property
+    def is_privileged(self) -> bool:
+        return self.is_staff or self.is_superuser

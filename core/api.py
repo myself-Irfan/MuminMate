@@ -5,10 +5,10 @@ from ninja import Router
 
 from core.exceptions import ServiceUnavailableError
 from core.schemas import HealthOut, ProblemOut
-from core.selectors import db_ready
+from core.selectors import is_db_ready
 
-# Polled by container and load-balancer healthchecks: changing these paths breaks them.
-router = Router(tags=["health"])
+# Polled by probes with no session: keep these paths and auth=None.
+router = Router(tags=["health"], auth=None)
 
 
 @router.get("/live", response=HealthOut, url_name="health-live")
@@ -22,6 +22,6 @@ def live(request: HttpRequest) -> HealthOut:
     url_name="health-ready",
 )
 def ready(request: HttpRequest) -> HealthOut:
-    if not db_ready():
+    if not is_db_ready():
         raise ServiceUnavailableError("Database unavailable")
     return HealthOut(status="ok")
