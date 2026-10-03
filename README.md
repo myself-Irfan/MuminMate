@@ -167,9 +167,11 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ```
 config/    settings, env, URL and API wiring
 core/      cross-cutting: health checks, Problem+JSON errors
-users/     custom user model (email login, no username), manager, admin, login/logout, session timeouts
+users/     custom user model (email login, no username), manager, admin, login/logout, session timeouts,
+           login throttling
 web/       server-rendered pages (home)
 templates/ shared layout (base.html)
 static/    CSS, fonts, logos (self-hosted, with licences)
 tests/     mirrors the source tree
+load-tests/ k6 load tests
 ```

@@ -4,7 +4,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from users.models import LoginFailure
-from users.selectors import digest_email, mask_ip
+from users.throttling import digest_email, mask_ip
 
 
 def record_login_failure(email: str, ip: str | None) -> None:

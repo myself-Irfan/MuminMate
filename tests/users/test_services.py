@@ -4,14 +4,14 @@ import pytest
 from django.utils import timezone
 from pytest_django import Settings
 
-from config.env import LoginLimits
+from users.limits import LoginLimits
 from users.models import LoginFailure
-from users.selectors import digest_email
 from users.services import (
     clear_login_failures,
     delete_expired_login_failures,
     record_login_failure,
 )
+from users.throttling import digest_email
 
 
 @pytest.mark.django_db
