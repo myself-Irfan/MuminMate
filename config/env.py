@@ -1,23 +1,17 @@
 from pathlib import Path
 from typing import Annotated, Self
 
-from pydantic import BaseModel, PositiveInt, SecretStr, field_validator, model_validator
+from pydantic import (
+    Field,
+    NonNegativeInt,
+    PositiveInt,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-
-class LoginLimit(BaseModel, extra="forbid", frozen=True):
-    max_failures: PositiveInt
-    window_seconds: PositiveInt
-
-
-class EmailLoginLimit(LoginLimit):
-    backoff_seconds: PositiveInt
-
-
-class LoginLimits(BaseModel, extra="forbid", frozen=True):
-    email_ip: LoginLimit
-    ip: LoginLimit
-    email: EmailLoginLimit
+from users.limits import LoginLimits
 
 
 class Env(BaseSettings):
@@ -29,7 +23,7 @@ class Env(BaseSettings):
     django_debug: bool
     django_allowed_hosts: Annotated[list[str], NoDecode]
     django_https: bool
-    django_hsts_seconds: int
+    django_hsts_seconds: NonNegativeInt
     django_session_idle_seconds: PositiveInt
     django_session_absolute_seconds: PositiveInt
     django_login_limits: LoginLimits
@@ -38,7 +32,8 @@ class Env(BaseSettings):
     postgres_user: str
     postgres_password: SecretStr
     postgres_host: str
-    postgres_port: int
+    # 0 only as the Dockerfile's build-time placeholder.
+    postgres_port: Annotated[int, Field(ge=0, le=65535)]
     postgres_pool_timeout_seconds: PositiveInt
 
     @field_validator("django_allowed_hosts", mode="before")

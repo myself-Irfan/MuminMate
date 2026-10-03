@@ -2,7 +2,7 @@ import pytest
 from django.test import Client
 from pytest_django import Settings
 
-from config.env import EmailLoginLimit, LoginLimit, LoginLimits
+from users.limits import EmailLoginLimit, LoginLimit, LoginLimits
 from users.models import User
 
 

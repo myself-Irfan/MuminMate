@@ -6,7 +6,8 @@ import pytest
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
 
-from config.env import EmailLoginLimit, Env, LoginLimit, LoginLimits
+from config.env import Env
+from users.limits import EmailLoginLimit, LoginLimit, LoginLimits
 
 
 @pytest.fixture
@@ -61,6 +62,25 @@ def test_env_fails_when_pool_timeout_not_positive(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("POSTGRES_POOL_TIMEOUT_SECONDS", "0")
 
     with pytest.raises(ValidationError, match="postgres_pool_timeout_seconds"):
+        Env(_env_file=None)
+
+
+@pytest.mark.usefixtures("env_vars")
+def test_env_fails_when_hsts_seconds_negative(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DJANGO_HSTS_SECONDS", "-1")
+
+    with pytest.raises(ValidationError, match="django_hsts_seconds"):
+        Env(_env_file=None)
+
+
+@pytest.mark.usefixtures("env_vars")
+@pytest.mark.parametrize("port", ["-1", "65536"])
+def test_env_fails_when_postgres_port_out_of_range(
+    monkeypatch: pytest.MonkeyPatch, port: str
+) -> None:
+    monkeypatch.setenv("POSTGRES_PORT", port)
+
+    with pytest.raises(ValidationError, match="postgres_port"):
         Env(_env_file=None)
 
 

@@ -27,12 +27,12 @@ class SessionTimeoutMiddleware:
 
     def _apply_timeouts(self, request: HttpRequest) -> None:
         now = int(time.time())
-        if self._absolute_age_reached(request.session, now):
+        if self._has_reached_absolute_age(request.session, now):
             logout(request)
         else:
             self._refresh_idle_expiry(request.session, now)
 
-    def _absolute_age_reached(self, session: SessionBase, now: int) -> bool:
+    def _has_reached_absolute_age(self, session: SessionBase, now: int) -> bool:
         login_at = session.get(SessionKey.LOGIN_AT)
         # Fail closed: a session without login_at counts as expired.
         return login_at is None or now - login_at >= settings.SESSION_ABSOLUTE_AGE
