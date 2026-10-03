@@ -5,7 +5,7 @@ from ninja import Router
 
 from core.exceptions import ServiceUnavailableError
 from core.schemas import HealthOut, ProblemOut
-from core.selectors import is_db_ready
+from core.services.health_service import HealthService
 
 # Polled by probes with no session: keep these paths and auth=None.
 router = Router(tags=["health"], auth=None)
@@ -22,6 +22,6 @@ def live(request: HttpRequest) -> HealthOut:
     url_name="health-ready",
 )
 def ready(request: HttpRequest) -> HealthOut:
-    if not is_db_ready():
+    if not HealthService().is_db_ready():
         raise ServiceUnavailableError("Database unavailable")
     return HealthOut(status="ok")

@@ -6,7 +6,7 @@ from django.contrib.auth import SESSION_KEY, aauthenticate, authenticate
 from django.test import Client, RequestFactory
 
 from users.models import LoginFailure, User
-from users.services import record_login_failure
+from users.services.login_failure_service import LoginFailureService
 
 pytestmark = pytest.mark.usefixtures("login_limits")
 
@@ -14,7 +14,7 @@ pytestmark = pytest.mark.usefixtures("login_limits")
 def test_authenticate_returns_user_and_clears_pair_failures(
     rf: RequestFactory, consumer_user: User, password: str
 ) -> None:
-    record_login_failure(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record(consumer_user.email, "127.0.0.1")
 
     user = authenticate(rf.post("/"), username=consumer_user.email, password=password)
 
@@ -59,8 +59,8 @@ def test_authenticate_records_failure_without_ip_when_no_request(password: str) 
 def test_authenticate_refuses_without_checking_password_when_throttled(
     rf: RequestFactory, monkeypatch: pytest.MonkeyPatch, consumer_user: User, password: str
 ) -> None:
-    record_login_failure(consumer_user.email, "127.0.0.1")
-    record_login_failure(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record(consumer_user.email, "127.0.0.1")
     check_password = Mock(return_value=True)
     monkeypatch.setattr(User, "check_password", check_password)
 
@@ -85,8 +85,8 @@ def test_aauthenticate_records_failure_when_password_wrong(
 def test_aauthenticate_refuses_without_checking_password_when_throttled(
     rf: RequestFactory, monkeypatch: pytest.MonkeyPatch, consumer_user: User, password: str
 ) -> None:
-    record_login_failure(consumer_user.email, "127.0.0.1")
-    record_login_failure(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record(consumer_user.email, "127.0.0.1")
     check_password = Mock(return_value=True)
     monkeypatch.setattr(User, "check_password", check_password)
 
@@ -102,8 +102,8 @@ def test_aauthenticate_refuses_without_checking_password_when_throttled(
 def test_consumer_login_refuses_with_generic_error_when_throttled(
     client: Client, consumer_user: User, password: str
 ) -> None:
-    record_login_failure(consumer_user.email, "127.0.0.1")
-    record_login_failure(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record(consumer_user.email, "127.0.0.1")
 
     response = client.post(
         "/accounts/login/", {"username": consumer_user.email, "password": password}
@@ -117,8 +117,8 @@ def test_consumer_login_refuses_with_generic_error_when_throttled(
 def test_admin_login_refuses_when_throttled(
     client: Client, staff_user: User, password: str
 ) -> None:
-    record_login_failure(staff_user.email, "127.0.0.1")
-    record_login_failure(staff_user.email, "127.0.0.1")
+    LoginFailureService().record(staff_user.email, "127.0.0.1")
+    LoginFailureService().record(staff_user.email, "127.0.0.1")
 
     client.post("/admin/login/", {"username": staff_user.email, "password": password})
 
