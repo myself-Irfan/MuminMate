@@ -5,6 +5,7 @@ description = "Grounded Quran and hadith assistant with cited, confidence-gated 
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "asgiref>=3.12.1,<4",
     "django[argon2]>=5.2,<5.3",
     "django-ninja>=1.7,<2",
     "django-stubs-ext>=6.1,<7",

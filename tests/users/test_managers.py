@@ -1,4 +1,5 @@
 import pytest
+from asgiref.sync import async_to_sync
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
 
@@ -73,6 +74,15 @@ def test_get_by_natural_key_matches_when_email_not_normalized(password: str) -> 
     user = User.objects.create_user(email="irfan@example.com", password=password)
 
     found = User.objects.get_by_natural_key(" IRFAN@Example.com ")
+
+    assert found == user
+
+
+@pytest.mark.django_db
+def test_aget_by_natural_key_matches_when_email_not_normalized(password: str) -> None:
+    user = User.objects.create_user(email="irfan@example.com", password=password)
+
+    found = async_to_sync(User.objects.aget_by_natural_key)(" IRFAN@Example.com ")
 
     assert found == user
 

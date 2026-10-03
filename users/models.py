@@ -24,6 +24,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.CheckConstraint(
                 condition=models.Q(email=Lower("email")) & ~models.Q(email__regex=r"\s"),
                 name="users_email_normalized",
+                violation_error_message="Email must be lowercase, without spaces.",
             ),
             models.CheckConstraint(
                 condition=~models.Q(is_superuser=True, is_staff=False),
@@ -46,3 +47,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_privileged(self) -> bool:
         return self.is_staff or self.is_superuser
+
+
+class LoginFailure(models.Model):
+    email_digest = models.CharField(max_length=64)
+    # Null when authenticate() has no request.
+    ip = models.GenericIPAddressField(null=True)
+    failed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "login_failures"
+        indexes = (
+            models.Index(fields=("email_digest", "failed_at"), name="login_failures_digest_idx"),
+            models.Index(fields=("ip", "failed_at"), name="login_failures_ip_idx"),
+        )
+
+    def __str__(self) -> str:
+        return f"Login failure at {self.failed_at} from {self.ip}"

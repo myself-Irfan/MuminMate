@@ -13,6 +13,9 @@ class UserManager[T: AbstractBaseUser](BaseUserManager[T]):
     def get_by_natural_key(self, username: str | None) -> T:
         return self.get(email=self.normalize_email(username))
 
+    async def aget_by_natural_key(self, username: str | None) -> T:
+        return await self.aget(email=self.normalize_email(username))
+
     def create_user(self, email: str, password: str | None = None, **extra_fields: Any) -> T:
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)

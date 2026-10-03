@@ -1,9 +1,11 @@
+from datetime import timedelta
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.utils import timezone
 
-from users.models import User
+from users.models import LoginFailure, User
 
 
 @pytest.mark.django_db
@@ -28,3 +30,17 @@ def test_createsuperuser_noinput_skips_password_validation(
     call_command("createsuperuser", "--noinput", email="admin@example.com", stdout=StringIO())
 
     assert User.objects.get(email="admin@example.com").check_password(short_password)
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("login_limits")
+def test_deleteexpiredloginfailures_reports_deleted_count() -> None:
+    LoginFailure.objects.create(
+        email_digest="old", failed_at=timezone.now() - timedelta(seconds=301)
+    )
+    stdout = StringIO()
+
+    call_command("deleteexpiredloginfailures", stdout=stdout)
+
+    assert stdout.getvalue() == "Deleted 1 expired login failures.\n"
+    assert not LoginFailure.objects.exists()
