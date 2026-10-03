@@ -114,7 +114,8 @@ A refused attempt looks like a wrong password, skips the password check and isn'
 works unless someone keeps guessing. Unknown emails count too. A successful login clears only that
 email's failures from that IP. IPv6 addresses count per `/64`.
 
-Each failure stores a keyed hash of the email (never the email itself), the IP and the time. IPs are
+Each failure stores a keyed hash of the email (never the email itself), the IP and the time. The hash is
+keyed with `DJANGO_SECRET_KEY`, so rotating the key resets every email's failure count. IPs are
 personal data, so `python manage.py deleteexpiredloginfailures` deletes rows older than the longest
 window; in production run it as a scheduled job (a Kubernetes CronJob, every 15 minutes).
 
