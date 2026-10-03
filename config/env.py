@@ -1,8 +1,23 @@
 from pathlib import Path
 from typing import Annotated, Self
 
-from pydantic import PositiveInt, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, PositiveInt, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+class LoginLimit(BaseModel, extra="forbid", frozen=True):
+    max_failures: PositiveInt
+    window_seconds: PositiveInt
+
+
+class EmailLoginLimit(LoginLimit):
+    backoff_seconds: PositiveInt
+
+
+class LoginLimits(BaseModel, extra="forbid", frozen=True):
+    email_ip: LoginLimit
+    ip: LoginLimit
+    email: EmailLoginLimit
 
 
 class Env(BaseSettings):
@@ -17,6 +32,7 @@ class Env(BaseSettings):
     django_hsts_seconds: int
     django_session_idle_seconds: PositiveInt
     django_session_absolute_seconds: PositiveInt
+    django_login_limits: LoginLimits
 
     postgres_db: str
     postgres_user: str

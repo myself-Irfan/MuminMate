@@ -88,9 +88,13 @@ DATABASES = {
 }
 
 AUTH_USER_MODEL = "users.User"
+# Replaces ModelBackend; listing both lets throttled logins through.
+AUTHENTICATION_BACKENDS = ["users.backends.ThrottledModelBackend"]
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
+
+LOGIN_LIMITS = env.django_login_limits
 
 # With real users, add hashers first and never remove one: its hashes stop verifying.
 PASSWORD_HASHERS = [

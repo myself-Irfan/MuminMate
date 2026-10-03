@@ -44,6 +44,7 @@ jobs:
       DJANGO_HSTS_SECONDS: "0"
       DJANGO_SESSION_IDLE_SECONDS: "10800"
       DJANGO_SESSION_ABSOLUTE_SECONDS: "43200"
+      DJANGO_LOGIN_LIMITS: '{"email_ip":{"max_failures":5,"window_seconds":900},"ip":{"max_failures":100,"window_seconds":900},"email":{"max_failures":20,"window_seconds":3600,"backoff_seconds":60}}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

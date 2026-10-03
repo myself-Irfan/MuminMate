@@ -21,3 +21,4 @@ design/
 Dockerfile
 compose.yaml
 Makefile
+load-tests/
