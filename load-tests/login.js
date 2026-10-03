@@ -10,8 +10,8 @@ const CONFIG = {
   preAllocatedVUs: 5,
   maxVUs: 40,
   maxErrorRate: 0.01,
-  // Measured 2026-10-03 (M-series): throttled 14 ms, valid 113 ms; 40 ms is below any hash.
-  p95: { throttled: 40, valid: 500 },
+  // p95 measured 2026-10-03: throttled 14-54 ms, valid 106-148 ms; hashing refusals hit 894 ms.
+  p95: { throttled: 100, valid: 500 },
 };
 
 const BASE_URL = requiredEnv("LOAD_BASE_URL");

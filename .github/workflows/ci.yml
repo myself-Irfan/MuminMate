@@ -12,11 +12,53 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  DJANGO_SECRET_KEY: ci-only-not-a-secret
+  DJANGO_DEBUG: "false"
+  DJANGO_ALLOWED_HOSTS: localhost
+  POSTGRES_DB: muminmate
+  POSTGRES_USER: muminmate
+  POSTGRES_PASSWORD: muminmate
+  POSTGRES_HOST: localhost
+  POSTGRES_PORT: "5432"
+  POSTGRES_POOL_TIMEOUT_SECONDS: "5"
+  DJANGO_HTTPS: "false"
+  DJANGO_HSTS_SECONDS: "0"
+  DJANGO_SESSION_IDLE_SECONDS: "10800"
+  DJANGO_SESSION_ABSOLUTE_SECONDS: "43200"
+  DJANGO_LOGIN_LIMITS: '{"email_ip":{"max_failures":5,"window_seconds":900},"ip":{"max_failures":100,"window_seconds":900},"email":{"max_failures":20,"window_seconds":3600,"backoff_seconds":60}}'
+
 jobs:
-  checks:
+  lint:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    services:
+    steps:
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - &setup-uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - run: uv sync --locked
+      - run: uv run pre-commit run --all-files --show-diff-on-failure
+      - run: make typecheck
+
+  # Own job: a new advisory can fail it on a day nothing changed.
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - *checkout
+      - *setup-uv
+      - name: Audit Dependencies
+        run: >-
+          uv export --color never --locked --no-emit-project --format requirements-txt --quiet
+          | uvx pip-audit==2.10.1 --requirement /dev/stdin --disable-pip --progress-spinner off
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services: &services
       db:
         image: paradedb/paradedb:0.25.11-pg17@sha256:78d65750f0f88a56548526201bcab9910f83b90fe929cdbf979890f3f80b0f95
         env:
@@ -30,33 +72,10 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-    env:
-      DJANGO_SECRET_KEY: ci-only-not-a-secret
-      DJANGO_DEBUG: "false"
-      DJANGO_ALLOWED_HOSTS: localhost
-      POSTGRES_DB: muminmate
-      POSTGRES_USER: muminmate
-      POSTGRES_PASSWORD: muminmate
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: "5432"
-      POSTGRES_POOL_TIMEOUT_SECONDS: "5"
-      DJANGO_HTTPS: "false"
-      DJANGO_HSTS_SECONDS: "0"
-      DJANGO_SESSION_IDLE_SECONDS: "10800"
-      DJANGO_SESSION_ABSOLUTE_SECONDS: "43200"
-      DJANGO_LOGIN_LIMITS: '{"email_ip":{"max_failures":5,"window_seconds":900},"ip":{"max_failures":100,"window_seconds":900},"email":{"max_failures":20,"window_seconds":3600,"backoff_seconds":60}}'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - *checkout
+      - *setup-uv
       - run: uv sync --locked
-      - name: Audit Dependencies
-        run: >-
-          uv export --color never --locked --no-emit-project --format requirements-txt --quiet
-          | uvx pip-audit==2.10.1 --requirement /dev/stdin --disable-pip --progress-spinner off
-      - run: uv run pre-commit run --all-files --show-diff-on-failure
-      - run: make typecheck
       - run: uv run python manage.py makemigrations --check --dry-run
       - name: Test
         run: uv run pytest --cov --cov-report=term --cov-report=html --junitxml=junit.xml
@@ -93,6 +112,13 @@ jobs:
           DJANGO_HTTPS: "true"
           DJANGO_HSTS_SECONDS: "3600"
           DJANGO_SECRET_KEY: ci-deploy-check-only-0123456789abcdefghijklmnopqrstuvwxyz
+
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services: *services
+    steps:
+      - *checkout
       - name: Build Image
         run: docker build --tag muminmate .
       # A saved tar, not the Docker socket: the scanner gets no access to the daemon.
@@ -102,7 +128,8 @@ jobs:
           docker run --rm --volume "$PWD/image.tar:/image.tar:ro" \
             aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa \
             image --input /image.tar --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress
-      - name: Smoke Test Image
+      - &start-web
+        name: Start Web
         run: |
           docker run --rm --network host --env-file <(env | grep -E '^(DJANGO|POSTGRES)_') \
             muminmate python manage.py migrate --noinput
@@ -118,6 +145,80 @@ jobs:
           for asset in $assets; do
             curl --fail --silent --show-error --output /dev/null "http://localhost:8000$asset"
           done
-      - name: Web Logs
+      - name: Upload Image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: image
+          path: image.tar
+          retention-days: 1
+      - &web-logs
+        name: Web Logs
         if: failure()
         run: docker logs web || true
+
+  load_test:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services: *services
+    steps:
+      - *checkout
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: image
+      - run: docker load --input image.tar
+      - *start-web
+      - name: Load Test Login
+        run: |
+          LOAD_PASSWORD=$(openssl rand -hex 16)
+          export LOAD_PASSWORD
+          docker exec --env LOAD_PASSWORD web python manage.py shell -c "import os
+          from users.models import User
+          User.objects.create_user(email='load@example.com', password=os.environ['LOAD_PASSWORD'])"
+          mkdir load-test-report
+          docker run --rm --network host --user "$(id -u):$(id -g)" \
+            --volume "$PWD/load-tests:/scripts:ro" --volume "$PWD/load-test-report:/report" \
+            --env LOAD_BASE_URL=http://localhost:8000 --env LOAD_EMAIL=load@example.com \
+            --env LOAD_PASSWORD \
+            --env K6_WEB_DASHBOARD=true --env K6_WEB_DASHBOARD_EXPORT=/report/report.html \
+            grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34 \
+            run --quiet --summary-export /report/summary.json /scripts/login.js
+      # In --summary-export, a threshold that is true was crossed.
+      - name: Load Test Summary
+        if: ${{ !cancelled() && hashFiles('load-test-report/summary.json') != '' }}
+        run: |
+          jq --raw-output '
+            "## Load Test\n",
+            "| Endpoint | p95 | Median | Max | Thresholds |",
+            "|---|---|---|---|---|",
+            (.metrics | to_entries[] | select(.key | startswith("http_req_duration{endpoint:"))
+              | "| \(.key | capture("endpoint:(?<name>[^}]+)").name) "
+                + "| \(.value["p(95)"] | round) ms | \(.value.med | round) ms "
+                + "| \(.value.max | round) ms "
+                + "| \(.value.thresholds | to_entries
+                    | map((if .value then "❌ " else "✅ " end) + .key) | join(", ")) |"),
+            "\nRequests: \(.metrics.http_reqs.count), failed: \(.metrics.http_req_failed.value * 100) %"
+          ' load-test-report/summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Load Test Report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: load-test-report
+          path: load-test-report/
+          retention-days: 14
+      - *web-logs
+
+  # The one required check: rulesets keep a fixed name while jobs change.
+  checks:
+    if: ${{ always() }}
+    needs: [lint, audit, test, image, load_test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require Every Job
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "A required job ended with: $result" >&2; exit 1; }
+          done

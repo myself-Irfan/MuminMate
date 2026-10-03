@@ -2,12 +2,6 @@
 
 A grounded Quran and hadith assistant: every answer cites its sources, or says it couldn't find one.
 
-CI (GitHub Actions) audits the locked dependencies (pip-audit), runs pre-commit (including zizmor on the
-workflows), mypy, the migration check and the tests with coverage (at least 95%), then builds the Docker image,
-scans it with Trivy (fails on fixable HIGH/CRITICAL) and smoke-tests it (readiness, the login page and its
-static files), on every PR. Actions are pinned to commit SHAs and images to digests; Dependabot proposes
-updates monthly.
-
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/)
@@ -117,8 +111,8 @@ at startup.
 
 The limits apply to both logins (`/accounts/login/` and `/admin/`) and to `authenticate()` itself.
 A refused attempt looks like a wrong password, skips the password check and isn't counted, so waiting
-always works. Unknown emails count too. A successful login clears only that email's failures from that
-IP. IPv6 addresses count per `/64`.
+works unless someone keeps guessing. Unknown emails count too. A successful login clears only that
+email's failures from that IP. IPv6 addresses count per `/64`.
 
 Each failure stores a keyed hash of the email (never the email itself), the IP and the time. IPs are
 personal data, so `python manage.py deleteexpiredloginfailures` deletes rows older than the longest
@@ -141,7 +135,23 @@ k6 run -e LOAD_BASE_URL=http://localhost:8000 -e LOAD_EMAIL=… -e LOAD_PASSWORD
 `LOAD_EMAIL` must be a consumer account (staff are refused there). Watch memory with `docker stats`
 alongside: Argon2 uses 100 MiB per hash. Each run records a few failures from your IP, so many runs
 within 15 minutes trip the `ip` limit and valid logins fail: wait, or delete the `login_failures`
-rows.
+rows. CI runs `login.js` against the built image on every PR.
+
+## CI
+
+GitHub Actions runs these jobs on every PR, in parallel except `load_test`:
+
+| Job | Does |
+|---|---|
+| `lint` | pre-commit (ruff, zizmor on the workflows, whitespace) and mypy |
+| `audit` | pip-audit on the locked dependencies |
+| `test` | migration check, tests with coverage (at least 95%), `check --deploy`; results in the run summary, JUnit and HTML coverage as an artifact |
+| `image` | builds the Docker image, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files) |
+| `load_test` | runs `load-tests/login.js` against that image; p95 table in the run summary, k6's HTML report as an artifact |
+| `checks` | passes only if every job above passed; the one required check |
+
+Actions are pinned to commit SHAs and images to digests. Dependabot proposes updates monthly, except
+for images in the workflow itself (the ParadeDB service, Trivy, k6): bump those by hand.
 
 ## Look and feel
 
