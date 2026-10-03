@@ -24,7 +24,7 @@ def test_ready_returns_ok(client: Client) -> None:
 def test_ready_returns_problem_when_db_down(
     client: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("core.api.is_db_ready", Mock(return_value=False))
+    monkeypatch.setattr("core.api.HealthService.is_db_ready", Mock(return_value=False))
 
     response = client.get("/api/health/ready")
 

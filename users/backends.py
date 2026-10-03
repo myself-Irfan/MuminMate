@@ -5,8 +5,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.http import HttpRequest
 
 from users.models import User
-from users.selectors import is_login_throttled
-from users.services import clear_login_failures, record_login_failure
+from users.services.login_failure_service import LoginFailureService
 
 
 class ThrottledModelBackend(ModelBackend):
@@ -23,13 +22,13 @@ class ThrottledModelBackend(ModelBackend):
             return None
         ip = request.META.get("REMOTE_ADDR") if request else None
         # Refuse before super(): no Argon2 hash, nothing recorded.
-        if is_login_throttled(username, ip):
+        if LoginFailureService().is_throttled(username, ip):
             return None
         user = super().authenticate(request, username=username, password=password)
         if user is None:
-            record_login_failure(username, ip)
+            LoginFailureService().record(username, ip)
         else:
-            clear_login_failures(username, ip)
+            LoginFailureService().clear(username, ip)
         return user
 
     async def aauthenticate(
