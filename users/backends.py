@@ -21,14 +21,15 @@ class ThrottledModelBackend(ModelBackend):
         if username is None or password is None:
             return None
         ip = request.META.get("REMOTE_ADDR") if request else None
+        failures = LoginFailureService()
         # Refuse before super(): no Argon2 hash, nothing recorded.
-        if LoginFailureService().is_throttled(username, ip):
+        if failures.is_throttled(username, ip):
             return None
         user = super().authenticate(request, username=username, password=password)
         if user is None:
-            LoginFailureService().record(username, ip)
+            failures.record(username, ip)
         else:
-            LoginFailureService().clear(username, ip)
+            failures.clear(username, ip)
         return user
 
     async def aauthenticate(
