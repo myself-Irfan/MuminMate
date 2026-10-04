@@ -1,0 +1,10 @@
+{% if field.use_fieldset %}
+  <fieldset{% if field.aria_describedby %} aria-describedby="{{ field.aria_describedby }}"{% endif %}>
+  {% if field.label %}{{ field.legend_tag }}{% endif %}
+{% elif field.label %}
+  <label{% if field.id_for_label %} for="{{ field.id_for_label }}"{% endif %}>{{ field.label }}</label>
+{% endif %}
+{{ field }}
+{% if field.help_text %}<small{% if field.auto_id %} id="{{ field.auto_id }}_helptext"{% endif %}>{{ field.help_text|safe }}</small>{% endif %}
+{{ field.errors }}
+{% if field.use_fieldset %}</fieldset>{% endif %}

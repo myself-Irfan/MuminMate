@@ -5,10 +5,11 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 
 from users.managers import UserManager
+from users.validators import validate_email_is_ascii
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True, validators=[validate_email_is_ascii])
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -25,6 +26,11 @@ class User(AbstractBaseUser, PermissionsMixin):
                 condition=models.Q(email=Lower("email")) & ~models.Q(email__regex=r"\s"),
                 name="users_email_normalized",
                 violation_error_message="Email must be lowercase, without spaces.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(email__regex=r"^[\x00-\x7f]*$"),
+                name="users_email_ascii",
+                violation_error_message="Email must use only ASCII characters.",
             ),
             models.CheckConstraint(
                 condition=~models.Q(is_superuser=True, is_staff=False),

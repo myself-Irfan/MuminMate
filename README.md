@@ -67,6 +67,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `/` | Home: shows who is logged in |
 | `/accounts/login/` | Consumer login (staff and superuser accounts are refused; they use `/admin/`) |
 | `/accounts/logout/` | Log out (POST only) |
+| `/accounts/signup/` | Create a consumer account (public); always ends on `/accounts/signup/done/` |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
 ## Access
@@ -82,6 +83,23 @@ Staff and superusers use separate accounts: every consumer page, public ones inc
 Hashed with Argon2id. A password needs at least 8 characters, and is rejected if it's common, entirely
 numeric or too similar to the email. `createsuperuser --noinput` (`DJANGO_SUPERUSER_PASSWORD`) skips
 these checks, as Django does: choose a strong password.
+
+Staff add a user by email only, as an invite: staff never choose or see a user's password. The
+account has no usable password until the user sets one from the invite email, so it can't log in
+before that (the invite email arrives with email verification).
+
+## Signup
+
+`/accounts/signup/` never reveals whether an email already has an account: a new and a taken email get
+the same redirect, the same page and the same Argon2 hash (the taken path hashes the password and
+discards it, so timing differs only by the insert), and a race between two signups for one email ends
+the same way. Until email verification lands, a new account can log in straight away and a taken email
+gets no email.
+
+Email addresses are ASCII only, everywhere (signup, admin, `createsuperuser`, and a database
+constraint): lookalike letters such as `ı` would otherwise make `ırfan@` a different account from
+`irfan@`. This matches the HTML standard's valid email address; for an international domain, browsers
+send (and users can type) its `xn--` form.
 
 ## Sessions
 
@@ -161,15 +179,16 @@ Server-rendered pages styled with [Pico CSS](https://picocss.com) 2.1.1 (classle
 Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything is self-hosted under
 `static/` (no CDN); licences sit next to each file. The logo is one variable, `--mm-logo` in `theme.css`
 (`rub-el-hizb.svg`, `crescent.svg` or `slim-crescent.svg`); the browser-tab icon is
-`static/img/favicon.svg`.
+`static/img/favicon.svg`. Forms render through one field template, `templates/django/forms/field.html`
+(label, input, then the hint and errors under it, as Pico styles them).
 
 ## Project layout
 
 ```
 config/    settings, env, URL and API wiring
 core/      cross-cutting: health checks, Problem+JSON errors
-users/     custom user model (email login, no username), manager, admin, login/logout, session timeouts,
-           login throttling
+users/     custom user model (email login, no username), manager, admin, signup, login/logout, session
+           timeouts, login throttling
 web/       server-rendered pages (home)
 templates/ shared layout (base.html)
 static/    CSS, fonts, logos (self-hosted, with licences)

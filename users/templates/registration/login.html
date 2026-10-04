@@ -4,8 +4,7 @@
 
 {% block content %}
   <article class="card">
-    <p class="greeting-arabic" lang="ar" dir="rtl">السَّلَامُ عَلَيْكُمْ</p>
-    <p class="greeting-latin">Assalamu Alaikum</p>
+    {% include "users/partials/greeting.html" %}
     {% include "partials/divider.html" %}
     <h1>Log in</h1>
     <form method="post">
@@ -14,6 +13,7 @@
       <input type="hidden" name="next" value="{{ next }}">
       <button type="submit">Log in</button>
     </form>
+    <p class="note">New here? <a href="{% url 'signup' %}">Create an account</a>.</p>
     <p class="note">Staff? Use the <a href="{% url 'admin:login' %}">admin login</a>.</p>
   </article>
 {% endblock %}
