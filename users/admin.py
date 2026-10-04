@@ -1,10 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth import admin as auth_admin
+from django.forms import ModelForm
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
 from users.forms import UserAdminChangeForm, UserAdminCreationForm
 from users.models import User
+from users.services.user_service import UserService
 
 
 @admin.register(User)
@@ -24,7 +26,7 @@ class UserAdmin(auth_admin.UserAdmin[User]):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "usable_password", "password1", "password2"),
+                "fields": ("email",),
             },
         ),
     )
@@ -40,6 +42,16 @@ class UserAdmin(auth_admin.UserAdmin[User]):
     @admin.display(boolean=True, description=_("Verified"), ordering="email_verified_at")
     def verified(self, obj: User) -> bool:
         return obj.is_email_verified
+
+    def save_model(
+        self, request: HttpRequest, obj: User, form: ModelForm[User], change: bool
+    ) -> None:
+        if change:
+            super().save_model(request, obj, form, change)
+            return
+        created = UserService().create(email=obj.email, password=None)
+        # The admin logs and redirects with obj: give it the new pk.
+        obj.pk = created.pk
 
     # Editing users is superuser-equivalent (Django docs): non-superusers manage consumers only.
     def get_readonly_fields(self, request: HttpRequest, obj: User | None = None) -> tuple[str, ...]:

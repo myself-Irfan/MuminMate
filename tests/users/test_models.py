@@ -60,6 +60,24 @@ def test_validate_constraints_fails_when_email_not_normalized() -> None:
 
 
 @pytest.mark.django_db
+def test_full_clean_fails_when_email_not_ascii() -> None:
+    user = User(email="\u0131rfan@example.com")
+
+    with pytest.raises(ValidationError) as error:
+        user.full_clean(exclude=["password"])
+
+    assert [e.code for e in error.value.error_dict["email"]] == ["email_not_ascii"]
+
+
+@pytest.mark.django_db
+def test_save_fails_when_email_not_ascii() -> None:
+    user = User(email="\u0131rfan@example.com")
+
+    with pytest.raises(IntegrityError, match="users_email_ascii"):
+        user.save()
+
+
+@pytest.mark.django_db
 def test_save_fails_when_superuser_not_staff() -> None:
     user = User(email="root@example.com", is_superuser=True)
 

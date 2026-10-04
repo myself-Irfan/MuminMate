@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Create an account - MuminMate{% endblock %}
+
+{% block content %}
+  <article class="card">
+    {% include "users/partials/greeting.html" %}
+    {% include "partials/divider.html" %}
+    <h1>Create an account</h1>
+    <form method="post">
+      {% csrf_token %}
+      {{ form }}
+      <button type="submit">Create account</button>
+    </form>
+    <p class="note">Already have an account? <a href="{% url 'login' %}">Log in</a>.</p>
+  </article>
+{% endblock %}

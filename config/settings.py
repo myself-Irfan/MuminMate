@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
+    "django.forms",
     "ninja",
     "core",
     "users",
@@ -72,6 +73,9 @@ TEMPLATES = [
         },
     },
 ]
+
+# Lets templates/django/forms/ override Django's form templates.
+FORM_RENDERER = "django.forms.renderers.TemplatesSetting"
 
 WSGI_APPLICATION = "config.wsgi.application"
 

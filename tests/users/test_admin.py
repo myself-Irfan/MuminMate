@@ -1,19 +1,17 @@
 from datetime import datetime
 from http import HTTPStatus
+from unittest.mock import Mock
 
 import pytest
 from django.contrib import admin
+from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission
 from django.test import Client
 from django.utils import timezone
 
 from users.admin import UserAdmin
 from users.models import User
-
-
-@pytest.fixture
-def add_payload(password: str) -> dict[str, str]:
-    return {"usable_password": "true", "password1": password, "password2": password}
+from users.services.user_service import UserService
 
 
 @pytest.fixture
@@ -25,63 +23,60 @@ def password_payload() -> dict[str, str]:
     }
 
 
-def test_add_form_has_email_and_no_username(admin_client: Client) -> None:
+def test_add_form_has_only_email(admin_client: Client) -> None:
     response = admin_client.get("/admin/users/user/add/")
 
     assert response.status_code == HTTPStatus.OK
-    assert set(response.context["adminform"].form.fields) == {
-        "email",
-        "usable_password",
-        "password1",
-        "password2",
-    }
+    assert set(response.context["adminform"].form.fields) == {"email"}
 
 
-def test_add_normalizes_email(
-    admin_client: Client, add_payload: dict[str, str], password: str
-) -> None:
-    response = admin_client.post(
-        "/admin/users/user/add/", {**add_payload, "email": "Irfan@Example.com"}
-    )
+def test_add_invites_user_without_password(admin_client: Client) -> None:
+    response = admin_client.post("/admin/users/user/add/", {"email": "Irfan@Example.com"})
 
     assert response.status_code == HTTPStatus.FOUND
-    assert User.objects.get(email="irfan@example.com").check_password(password)
+    user = User.objects.get(email="irfan@example.com")
+    assert not user.has_usable_password()
+    assert not user.is_staff
+
+
+def test_add_creates_user_through_user_service(
+    admin_client: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create = Mock(wraps=UserService().create)
+    monkeypatch.setattr("users.admin.UserService.create", create)
+
+    admin_client.post("/admin/users/user/add/", {"email": "Irfan@Example.com"})
+
+    create.assert_called_once_with(email="irfan@example.com", password=None)
+
+
+def test_add_logs_the_created_user(admin_client: Client) -> None:
+    admin_client.post("/admin/users/user/add/", {"email": "irfan@example.com"})
+
+    user = User.objects.get(email="irfan@example.com")
+    assert LogEntry.objects.get().object_id == str(user.pk)
 
 
 def test_add_fails_when_email_taken_in_other_case(
-    admin_client: Client, consumer_user: User, add_payload: dict[str, str]
+    admin_client: Client, consumer_user: User
 ) -> None:
-    response = admin_client.post(
-        "/admin/users/user/add/", {**add_payload, "email": "IRFAN@Example.com"}
-    )
+    response = admin_client.post("/admin/users/user/add/", {"email": "IRFAN@Example.com"})
 
     assert response.status_code == HTTPStatus.OK
     assert "email" in response.context["adminform"].form.errors
     assert User.objects.filter(email="irfan@example.com").count() == 1
 
 
-def test_add_fails_when_password_too_short(admin_client: Client, short_password: str) -> None:
-    response = admin_client.post(
-        "/admin/users/user/add/",
-        {
-            "email": "new@example.com",
-            "usable_password": "true",
-            "password1": short_password,
-            "password2": short_password,
-        },
-    )
+def test_add_fails_when_email_not_ascii(admin_client: Client) -> None:
+    response = admin_client.post("/admin/users/user/add/", {"email": "\u0131rfan@example.com"})
 
     assert response.status_code == HTTPStatus.OK
-    assert "password2" in response.context["adminform"].form.errors
-    assert not User.objects.filter(email="new@example.com").exists()
+    assert response.context["adminform"].form.has_error("email", "email_not_ascii")
+    assert not User.objects.filter(email="\u0131rfan@example.com").exists()
 
 
-def test_add_succeeds_when_staff_with_permission(
-    staff_client: Client, add_payload: dict[str, str]
-) -> None:
-    response = staff_client.post(
-        "/admin/users/user/add/", {**add_payload, "email": "new@example.com"}
-    )
+def test_add_succeeds_when_staff_with_permission(staff_client: Client) -> None:
+    response = staff_client.post("/admin/users/user/add/", {"email": "new@example.com"})
 
     assert response.status_code == HTTPStatus.FOUND
     assert User.objects.filter(email="new@example.com").exists()

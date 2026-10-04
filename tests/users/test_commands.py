@@ -2,7 +2,7 @@ from datetime import timedelta
 from io import StringIO
 
 import pytest
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from django.utils import timezone
 
 from users.models import LoginFailure, User
@@ -18,6 +18,20 @@ def test_createsuperuser_by_email(monkeypatch: pytest.MonkeyPatch, password: str
     assert user.is_staff
     assert user.is_superuser
     assert user.check_password(password)
+
+
+@pytest.mark.django_db
+def test_createsuperuser_fails_when_email_not_ascii(
+    monkeypatch: pytest.MonkeyPatch, password: str
+) -> None:
+    monkeypatch.setenv("DJANGO_SUPERUSER_PASSWORD", password)
+
+    with pytest.raises(CommandError, match="ASCII"):
+        call_command(
+            "createsuperuser", "--noinput", email="\u0131rfan@example.com", stdout=StringIO()
+        )
+
+    assert not User.objects.exists()
 
 
 # Django validates only interactively; --noinput trusts the operator.
