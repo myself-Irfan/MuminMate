@@ -1,0 +1,27 @@
+import io
+import json
+import logging
+import logging.config
+from typing import Any
+
+import structlog
+
+from config.env import LogSettings
+from config.logging_config import build_logging
+
+
+def route_logs_to_buffer(log_settings: LogSettings) -> io.StringIO:
+    logging.config.dictConfig(build_logging(log_settings))
+    [handler] = [
+        handler
+        for handler in logging.getLogger().handlers
+        if isinstance(handler.formatter, structlog.stdlib.ProcessorFormatter)
+    ]
+    assert isinstance(handler, logging.StreamHandler)
+    buffer = io.StringIO()
+    handler.setStream(buffer)
+    return buffer
+
+
+def json_lines(buffer: io.StringIO) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in buffer.getvalue().splitlines()]

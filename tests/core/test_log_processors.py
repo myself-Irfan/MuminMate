@@ -1,0 +1,56 @@
+from http import HTTPStatus
+
+import pytest
+import structlog
+
+from core.log_processors import drop_successful_probes, mask_sensitive
+from core.masking import DataMasker
+
+
+def test_mask_sensitive_masks_fields_and_request_query() -> None:
+    event = {"event": "request_started", "request": "GET /api/x?token=t&a=1", "password": "p"}
+
+    assert mask_sensitive(None, "info", event) == {
+        "event": "request_started",
+        "request": f"GET /api/x?token={DataMasker.replacement}&a=1",
+        "password": DataMasker.replacement,
+    }
+
+
+def test_probe_without_code_dropped() -> None:
+    event = {"event": "request_started", "is_probe": True}
+
+    with pytest.raises(structlog.DropEvent):
+        drop_successful_probes(None, "info", event)
+
+
+@pytest.mark.parametrize("code", [HTTPStatus.OK, HTTPStatus.NOT_MODIFIED])
+def test_successful_probe_dropped(code: HTTPStatus) -> None:
+    event = {"event": "request_finished", "is_probe": True, "code": code}
+
+    with pytest.raises(structlog.DropEvent):
+        drop_successful_probes(None, "info", event)
+
+
+def test_failing_probe_kept() -> None:
+    event = {"event": "request_finished", "is_probe": True, "code": HTTPStatus.BAD_REQUEST}
+
+    assert drop_successful_probes(None, "info", event) == event
+
+
+def test_app_event_during_probe_kept() -> None:
+    event = {"event": "db_check_failed", "is_probe": True, "error_type": "OperationalError"}
+
+    assert drop_successful_probes(None, "error", event) == event
+
+
+def test_crash_during_probe_kept() -> None:
+    event = {"event": "request_failed", "is_probe": True}
+
+    assert drop_successful_probes(None, "error", event) == event
+
+
+def test_other_request_kept() -> None:
+    event = {"event": "request_finished", "code": HTTPStatus.OK}
+
+    assert drop_successful_probes(None, "info", event) == event

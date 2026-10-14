@@ -22,6 +22,7 @@ COPY . .
 RUN DJANGO_SECRET_KEY=collectstatic DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS= \
     DJANGO_HTTPS=false DJANGO_HSTS_SECONDS=0 DJANGO_SESSION_IDLE_SECONDS=1 \
     DJANGO_SESSION_ABSOLUTE_SECONDS=1 \
+    DJANGO_LOGGING='{"level":"INFO","format":"json"}' \
     DJANGO_LOGIN_LIMITS='{"email_ip":{"max_failures":1,"window_seconds":1},"ip":{"max_failures":1,"window_seconds":1},"email":{"max_failures":1,"window_seconds":1,"backoff_seconds":1}}' \
     POSTGRES_DB= POSTGRES_USER= \
     POSTGRES_PASSWORD= POSTGRES_HOST= POSTGRES_PORT=0 POSTGRES_POOL_TIMEOUT_SECONDS=1 \

@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
 
-from config.env import Env
+from config.env import Env, LogSettings
 from users.limits import EmailLoginLimit, LoginLimit, LoginLimits
 
 
@@ -20,7 +20,16 @@ def login_limits_data() -> dict[str, Any]:
 
 
 @pytest.fixture
-def env_vars(monkeypatch: pytest.MonkeyPatch, login_limits_data: dict[str, Any]) -> None:
+def logging_data() -> dict[str, Any]:
+    return {"level": "INFO", "format": "json"}
+
+
+@pytest.fixture
+def env_vars(
+    monkeypatch: pytest.MonkeyPatch,
+    logging_data: dict[str, Any],
+    login_limits_data: dict[str, Any],
+) -> None:
     values = {
         "DJANGO_SECRET_KEY": "test-secret",
         "DJANGO_DEBUG": "false",
@@ -35,6 +44,7 @@ def env_vars(monkeypatch: pytest.MonkeyPatch, login_limits_data: dict[str, Any])
         "DJANGO_HSTS_SECONDS": "0",
         "DJANGO_SESSION_IDLE_SECONDS": "10800",
         "DJANGO_SESSION_ABSOLUTE_SECONDS": "43200",
+        "DJANGO_LOGGING": json.dumps(logging_data),
         "DJANGO_LOGIN_LIMITS": json.dumps(login_limits_data),
     }
 
@@ -165,4 +175,46 @@ def test_env_fails_when_login_limits_not_json(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("DJANGO_LOGIN_LIMITS", '{"ip": ')
 
     with pytest.raises(SettingsError, match="django_login_limits"):
+        Env(_env_file=None)
+
+
+@pytest.mark.usefixtures("env_vars")
+def test_logging_parsed_from_json() -> None:
+    env = Env(_env_file=None)
+
+    assert env.django_logging == LogSettings(level="INFO", format="json")
+
+
+@pytest.mark.parametrize(("key", "value"), [("level", "VERBOSE"), ("format", "xml")])
+@pytest.mark.usefixtures("env_vars")
+def test_env_fails_when_logging_value_unknown(
+    monkeypatch: pytest.MonkeyPatch, logging_data: dict[str, Any], key: str, value: str
+) -> None:
+    logging_data[key] = value
+    monkeypatch.setenv("DJANGO_LOGGING", json.dumps(logging_data))
+
+    with pytest.raises(ValidationError, match=re.escape(f"django_logging.{key}")):
+        Env(_env_file=None)
+
+
+@pytest.mark.usefixtures("env_vars")
+def test_env_fails_when_logging_key_unknown(
+    monkeypatch: pytest.MonkeyPatch, logging_data: dict[str, Any]
+) -> None:
+    logging_data["handler"] = "file"
+    monkeypatch.setenv("DJANGO_LOGGING", json.dumps(logging_data))
+
+    with pytest.raises(ValidationError, match=re.escape("django_logging.handler")):
+        Env(_env_file=None)
+
+
+@pytest.mark.parametrize("key", ["level", "format"])
+@pytest.mark.usefixtures("env_vars")
+def test_env_fails_when_logging_key_missing(
+    monkeypatch: pytest.MonkeyPatch, logging_data: dict[str, Any], key: str
+) -> None:
+    del logging_data[key]
+    monkeypatch.setenv("DJANGO_LOGGING", json.dumps(logging_data))
+
+    with pytest.raises(ValidationError, match=re.escape(f"django_logging.{key}")):
         Env(_env_file=None)
