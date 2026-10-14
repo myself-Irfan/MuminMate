@@ -36,6 +36,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_HSTS_SECONDS` | HSTS max-age; `0` locally, start production at `3600` |
 | `DJANGO_SESSION_IDLE_SECONDS` | Log out after this long without a request (`10800` = 3 h) |
 | `DJANGO_SESSION_ABSOLUTE_SECONDS` | Log out this long after login, even if active (`43200` = 12 h); at least the idle value |
+| `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
 | `DJANGO_LOGIN_LIMITS` | Failed-login limits as one-line JSON (see Login limits below) |
 | `POSTGRES_DB` | Database name |
 | `POSTGRES_USER` | Database user |
@@ -140,6 +141,41 @@ window; in production run it as a scheduled job (a Kubernetes CronJob, every 15 
 The client IP is `REMOTE_ADDR`. Behind a proxy or ingress, set uvicorn's `FORWARDED_ALLOW_IPS` to the
 proxy's address so it reads `X-Forwarded-For`; never `*`, which lets clients choose their own IP.
 
+## Logging
+
+Every log line goes to stdout, from our code, Django and uvicorn alike, in the format `DJANGO_LOGGING`
+picks. `console` is for reading in a terminal, `json` is for production, where a log collector reads
+each line as fields:
+
+```
+console:  2026-10-14T16:05:36.682380Z [warning  ] request_finished               [django_structlog.middlewares.request] code=404 func_name=handle_response ip=127.0.0.1 lineno=162 request='GET /api/nope' request_id=6754f0c3-5840-4d44-8f8b-ae458c9d7fad user_id=None
+json:     {"code": 404, "request": "GET /api/nope", "event": "request_finished", "ip": "127.0.0.1", "user_id": null, "request_id": "78d2927a-f9ba-4c56-a0a6-723619528a08", "logger": "django_structlog.middlewares.request", "level": "warning", "timestamp": "2026-10-14T16:05:36.684763Z", "func_name": "handle_response", "lineno": 162}
+```
+
+In `json`, an exception is a list of `{"exc_type", "exc_value", "frames", ...}`, one per exception in
+the chain, never with local variables.
+
+Each request logs `request_started` and `request_finished` (`request_failed` on a crash) with its
+`request_id`, `user_id` and `ip`. Successful health probes are not logged; failing ones are, marked
+`is_probe: true`.
+
+- **Request ID:** send `X-Request-ID` (letters, digits, `.`, `_`, `-`, up to 128) or get a new one;
+  either way it comes back in the response header and is on every line of that request. Quote it when
+  reporting a problem. Other values are replaced, and a client's `X-Correlation-ID` is ignored, so
+  clients can't write into the logs.
+- **IP:** `REMOTE_ADDR`, so set uvicorn's `FORWARDED_ALLOW_IPS` behind a proxy (see Login limits); a
+  client's own `X-Forwarded-For` is never trusted.
+- **Masking:** values of keys that name a secret (`password`, `token`, `api_key`, `cookie`,
+  `authorization`, …, in any spelling) and of such query-string parameters are logged as `***`. Our
+  events carry ids, never emails or message text. An exception's message is logged as written and can
+  include data from the database (a duplicate-key error names the email), so treat logs as personal
+  data and restrict who can read them.
+
+Reading logs: the `make run` terminal; `docker compose logs -f web` for `make stack`;
+`kubectl logs -f deploy/<name>` (`--previous` after a crash) in Kubernetes. To see the production
+format locally, set `"format":"json"` and pipe through `jq`. The app writes no log files (Twelve-Factor
+XI): storing and searching logs is the platform's job.
+
 ## Load tests
 
 [k6](https://k6.io) scripts in `load-tests/`, run against `make stack`. `login.js` sends 20 logins a
@@ -186,7 +222,7 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 
 ```
 config/    settings, env, URL and API wiring
-core/      cross-cutting: health checks, Problem+JSON errors
+core/      cross-cutting: health checks, Problem+JSON errors, request ID, log masking
 users/     custom user model (email login, no username), manager, admin, signup, login/logout, session
            timeouts, login throttling
 web/       server-rendered pages (home)

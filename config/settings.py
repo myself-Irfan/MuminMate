@@ -3,6 +3,7 @@ from pathlib import Path
 import django_stubs_ext
 
 from config.env import Env
+from config.logging_config import build_logging, configure_structlog
 
 # Runtime support for typed generics like `UserChangeForm[User]`.
 django_stubs_ext.monkeypatch()
@@ -39,12 +40,15 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.forms",
     "ninja",
+    "django_structlog",
     "core",
     "users",
     "web",
 ]
 
 MIDDLEWARE = [
+    "core.middleware.RequestIDMiddleware",
+    "django_structlog.middlewares.RequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -138,3 +142,8 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGGING = build_logging(env.django_logging)
+configure_structlog()
+# Its ipware trusts X-Forwarded-For; core.signals binds REMOTE_ADDR instead.
+DJANGO_STRUCTLOG_IP_LOGGING_ENABLED = False

@@ -1,7 +1,14 @@
+import io
+import logging.config
+from collections.abc import Iterator
+
 import pytest
+from django.conf import settings as django_settings
 from django.contrib.auth.models import Permission
 from pytest_django import Settings
 
+from config.env import LogSettings
+from tests.logging_support import route_logs_to_buffer
 from users.models import User
 
 
@@ -33,3 +40,14 @@ def staff_user(db: None, password: str) -> User:
         )
     )
     return user
+
+
+@pytest.fixture
+def restore_logging() -> Iterator[None]:
+    yield
+    logging.config.dictConfig(django_settings.LOGGING)
+
+
+@pytest.fixture
+def json_logs(restore_logging: None) -> io.StringIO:
+    return route_logs_to_buffer(LogSettings(level="INFO", format="json"))

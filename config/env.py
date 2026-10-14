@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import (
+    BaseModel,
     Field,
     NonNegativeInt,
     PositiveInt,
@@ -12,6 +13,11 @@ from pydantic import (
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from users.limits import LoginLimits
+
+
+class LogSettings(BaseModel, extra="forbid", frozen=True):
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    format: Literal["json", "console"]
 
 
 class Env(BaseSettings):
@@ -26,6 +32,7 @@ class Env(BaseSettings):
     django_hsts_seconds: NonNegativeInt
     django_session_idle_seconds: PositiveInt
     django_session_absolute_seconds: PositiveInt
+    django_logging: LogSettings
     django_login_limits: LoginLimits
 
     postgres_db: str
