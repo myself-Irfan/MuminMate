@@ -1,9 +1,11 @@
 import io
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 import structlog
 from django.test import Client, RequestFactory
+from django_structlog.celery.receivers import CeleryReceiver
 from django_structlog.middlewares import RequestMiddleware
 
 from core.signals import mark_health_probe
@@ -38,3 +40,19 @@ def test_other_requests_not_marked(rf: RequestFactory, path: str) -> None:
     mark_health_probe(sender=RequestMiddleware, request=rf.get(path))
 
     assert structlog.contextvars.get_contextvars() == {}
+
+
+@pytest.mark.usefixtures("clear_contextvars")
+def test_task_headers_carry_only_ids() -> None:
+    structlog.contextvars.bind_contextvars(
+        request_id="r1", task_id="t0", user_id=7, ip="203.0.113.9", is_probe=True
+    )
+    headers: dict[str, Any] = {}
+
+    CeleryReceiver().receiver_before_task_publish(headers=headers, properties={})
+
+    assert headers["__django_structlog__"] == {
+        "request_id": "r1",
+        "parent_task_id": "t0",
+        "user_id": 7,
+    }

@@ -44,15 +44,21 @@ Every variable is required; the app refuses to start if one is missing.
 | `POSTGRES_HOST` | `localhost` from the host; the service name inside compose |
 | `POSTGRES_PORT` | Host port mapped to the db container |
 | `POSTGRES_POOL_TIMEOUT_SECONDS` | Wait for a pooled connection; keep below the readiness probe timeout (`5`) |
+| `RABBITMQ_HOST` | Celery broker (RabbitMQ) host: `localhost` from the host; the service name inside compose |
+| `RABBITMQ_PORT` | Host port mapped to the broker's AMQP port (`5673` locally, so a local RabbitMQ keeps 5672) |
+| `RABBITMQ_USER` | Broker user, created by the container on first start |
+| `RABBITMQ_PASSWORD` | Broker user's password; generate with the command in `.env.example` |
+| `RABBITMQ_VHOST` | Broker virtual host (RabbitMQ's isolation unit; `muminmate`) |
 
 ## Commands
 
 | Command | Does |
 |---|---|
-| `make up` | Start the database (for `make run` and `make test`) |
+| `make up` | Start the database and RabbitMQ (for `make run`, `make worker` and `make test`) |
 | `make down` | Stop all containers |
-| `make stack` | Build and run the production image (db, migrate, web) on :8000 |
+| `make stack` | Build and run the production image (db, rabbitmq, migrate, worker, web) on :8000 |
 | `make run` | Start the dev server on :8000 (API docs at `/api/docs`) |
+| `make worker` | Run the Celery worker in Docker, attached; rebuilds it when a file changes (Compose Watch) |
 | `make lint` | Lint and format check |
 | `make format` | Auto-fix lint and formatting |
 | `make typecheck` | Type check (mypy, strict) |
@@ -176,6 +182,34 @@ Reading logs: the `make run` terminal; `docker compose logs -f web` for `make st
 format locally, set `"format":"json"` and pipe through `jq`. The app writes no log files (Twelve-Factor
 XI): storing and searching logs is the platform's job.
 
+## Background jobs
+
+[Celery](https://docs.celeryq.dev) runs background work in a separate worker process, with RabbitMQ as
+the broker. `make up` starts RabbitMQ (`127.0.0.1:5673`; its web UI at http://localhost:15673, log
+in with the `.env` user). Run `make worker` next to `make run`: the worker runs in Docker and is
+rebuilt when a file changes. Its logs stream there and in `docker compose logs -f worker`.
+`make stack` runs a worker too. Run one worker at a time: they share the broker, so any of them could
+take a task.
+
+To debug a task with breakpoints, stop the Docker worker (`docker compose stop worker`) and run
+`uv run celery -A config worker -Q default --pool solo` from your IDE: `solo` runs each task in that
+process. Don't run the default pool on macOS: with Celery 5.6.3 and billiard 4.3 every task fails
+there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in Celery 5.7).
+
+- There are no tasks yet: the worker consumes the `default` queue and answers
+  `uv run celery -A config inspect ping`. Each kind of work will get its own queue and worker.
+- Tasks take ids, never personal data, and are queued only after the transaction commits. A task
+  runs again if its worker is killed or loses the broker mid-task, so every task must be safe to run
+  twice; one whose process alone crashes (out of memory, say) is marked failed instead.
+- Messages are JSON only, and task results aren't stored.
+- Queues are quorum queues (RabbitMQ's durable, replicated type), and queuing a task waits until
+  the broker has stored it. Tasks survive a broker restart (a volume keeps its data).
+- Worker lines use the `DJANGO_LOGGING` format and level (`celery worker -l` is ignored). A task's
+  lines carry its `task_id` and the `request_id` and `user_id` of the request that queued it
+  (`task_enqueued`, `task_started`, `task_succeeded`, `task_failed`).
+- Each worker sets `--concurrency` (Celery's default is one process per CPU the machine has, not
+  the container's share); scale by running more workers.
+
 ## Load tests
 
 [k6](https://k6.io) scripts in `load-tests/`, run against `make stack`. `login.js` sends 20 logins a
@@ -201,12 +235,12 @@ GitHub Actions runs these jobs on every PR, in parallel except `load_test`:
 | `lint` | pre-commit (ruff, zizmor on the workflows, whitespace) and mypy |
 | `audit` | pip-audit on the locked dependencies |
 | `test` | migration check, tests with coverage (at least 95%), `check --deploy`; results in the run summary, JUnit and HTML coverage as an artifact |
-| `image` | builds the Docker image, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files) |
+| `image` | builds the Docker image, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, a worker answering a ping) |
 | `load_test` | runs `load-tests/login.js` against that image; p95 table in the run summary, k6's HTML report as an artifact |
 | `checks` | passes only if every job above passed; the one required check |
 
 Actions are pinned to commit SHAs and images to digests. Dependabot proposes updates monthly, except
-for images in the workflow itself (the ParadeDB service, Trivy, k6): bump those by hand.
+for images in the workflow itself (the ParadeDB and RabbitMQ services, Trivy, k6): bump those by hand.
 
 ## Look and feel
 
@@ -221,8 +255,8 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ## Project layout
 
 ```
-config/    settings, env, URL and API wiring
-core/      cross-cutting: health checks, Problem+JSON errors, request ID, log masking
+config/    settings, env, URL, API and Celery wiring
+core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
 users/     custom user model (email login, no username), manager, admin, signup, login/logout, session
            timeouts, login throttling
 web/       server-rendered pages (home)

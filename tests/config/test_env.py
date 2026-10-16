@@ -3,6 +3,7 @@ import re
 from typing import Any
 
 import pytest
+from kombu.utils.url import url_to_parts
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
 
@@ -40,6 +41,11 @@ def env_vars(
         "POSTGRES_HOST": "localhost",
         "POSTGRES_PORT": "5432",
         "POSTGRES_POOL_TIMEOUT_SECONDS": "5",
+        "RABBITMQ_HOST": "localhost",
+        "RABBITMQ_PORT": "5672",
+        "RABBITMQ_USER": "user",
+        "RABBITMQ_PASSWORD": "password",
+        "RABBITMQ_VHOST": "muminmate",
         "DJANGO_HTTPS": "false",
         "DJANGO_HSTS_SECONDS": "0",
         "DJANGO_SESSION_IDLE_SECONDS": "10800",
@@ -84,13 +90,39 @@ def test_env_fails_when_hsts_seconds_negative(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.usefixtures("env_vars")
+@pytest.mark.parametrize("var", ["POSTGRES_PORT", "RABBITMQ_PORT"])
 @pytest.mark.parametrize("port", ["-1", "65536"])
-def test_env_fails_when_postgres_port_out_of_range(
-    monkeypatch: pytest.MonkeyPatch, port: str
+def test_env_fails_when_port_out_of_range(
+    monkeypatch: pytest.MonkeyPatch, var: str, port: str
 ) -> None:
-    monkeypatch.setenv("POSTGRES_PORT", port)
+    monkeypatch.setenv(var, port)
 
-    with pytest.raises(ValidationError, match="postgres_port"):
+    with pytest.raises(ValidationError, match=var.lower()):
+        Env(_env_file=None)
+
+
+@pytest.mark.usefixtures("env_vars")
+def test_rabbitmq_url_round_trips_user_password_and_vhost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url_reserved_chars = "p@ss:w/rd"
+    for var in ("RABBITMQ_USER", "RABBITMQ_PASSWORD", "RABBITMQ_VHOST"):
+        monkeypatch.setenv(var, url_reserved_chars)
+
+    env = Env(_env_file=None)
+
+    parts = url_to_parts(env.rabbitmq_url)
+    assert (parts.username, parts.password, parts.path) == (url_reserved_chars,) * 3
+
+
+@pytest.mark.usefixtures("env_vars")
+@pytest.mark.parametrize(
+    "var", ["POSTGRES_PASSWORD", "RABBITMQ_USER", "RABBITMQ_PASSWORD", "RABBITMQ_VHOST"]
+)
+def test_env_fails_when_value_empty(monkeypatch: pytest.MonkeyPatch, var: str) -> None:
+    monkeypatch.setenv(var, "")
+
+    with pytest.raises(ValidationError, match=var.lower()):
         Env(_env_file=None)
 
 

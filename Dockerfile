@@ -25,7 +25,9 @@ RUN DJANGO_SECRET_KEY=collectstatic DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS= \
     DJANGO_LOGGING='{"level":"INFO","format":"json"}' \
     DJANGO_LOGIN_LIMITS='{"email_ip":{"max_failures":1,"window_seconds":1},"ip":{"max_failures":1,"window_seconds":1},"email":{"max_failures":1,"window_seconds":1,"backoff_seconds":1}}' \
     POSTGRES_DB= POSTGRES_USER= \
-    POSTGRES_PASSWORD= POSTGRES_HOST= POSTGRES_PORT=0 POSTGRES_POOL_TIMEOUT_SECONDS=1 \
+    POSTGRES_PASSWORD=collectstatic POSTGRES_HOST= POSTGRES_PORT=0 POSTGRES_POOL_TIMEOUT_SECONDS=1 \
+    RABBITMQ_HOST= RABBITMQ_PORT=0 RABBITMQ_USER=collectstatic RABBITMQ_PASSWORD=collectstatic \
+    RABBITMQ_VHOST=collectstatic \
     .venv/bin/python manage.py collectstatic --noinput
 
 RUN .venv/bin/python -m compileall -q .

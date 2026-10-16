@@ -3,7 +3,7 @@ from http import HTTPStatus
 import pytest
 import structlog
 
-from core.log_processors import drop_successful_probes, mask_sensitive
+from core.log_processors import drop_successful_probes, mask_sensitive, move_exception_to_exc_info
 from core.masking import DataMasker
 
 
@@ -54,3 +54,17 @@ def test_other_request_kept() -> None:
     event = {"event": "request_finished", "code": HTTPStatus.OK}
 
     assert drop_successful_probes(None, "info", event) == event
+
+
+def test_exception_object_moved_to_exc_info() -> None:
+    error = ValueError("boom")
+
+    event = move_exception_to_exc_info(None, "error", {"exception": error, "exc_info": True})
+
+    assert event == {"exc_info": error}
+
+
+def test_formatted_exception_left_alone() -> None:
+    event = {"exception": "Traceback ..."}
+
+    assert move_exception_to_exc_info(None, "error", event) == event

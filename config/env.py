@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Annotated, Literal, Self
+from urllib.parse import quote
 
 from pydantic import (
     BaseModel,
@@ -37,11 +38,25 @@ class Env(BaseSettings):
 
     postgres_db: str
     postgres_user: str
-    postgres_password: SecretStr
+    postgres_password: Annotated[SecretStr, Field(min_length=1)]
     postgres_host: str
     # 0 only as the Dockerfile's build-time placeholder.
     postgres_port: Annotated[int, Field(ge=0, le=65535)]
     postgres_pool_timeout_seconds: PositiveInt
+
+    rabbitmq_host: str
+    # 0 only as the Dockerfile's build-time placeholder.
+    rabbitmq_port: Annotated[int, Field(ge=0, le=65535)]
+    rabbitmq_user: Annotated[str, Field(min_length=1)]
+    rabbitmq_password: Annotated[SecretStr, Field(min_length=1)]
+    rabbitmq_vhost: Annotated[str, Field(min_length=1)]
+
+    @property
+    def rabbitmq_url(self) -> str:
+        user = quote(self.rabbitmq_user, safe="")
+        password = quote(self.rabbitmq_password.get_secret_value(), safe="")
+        vhost = quote(self.rabbitmq_vhost, safe="")
+        return f"amqp://{user}:{password}@{self.rabbitmq_host}:{self.rabbitmq_port}/{vhost}"
 
     @field_validator("django_allowed_hosts", mode="before")
     @classmethod

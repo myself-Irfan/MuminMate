@@ -13,6 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = Env()
 SECRET_KEY = env.django_secret_key.get_secret_value()
 DEBUG = env.django_debug
+# The broker URL holds a password Django's filter misses.
+DEFAULT_EXCEPTION_REPORTER_FILTER = "core.debug.BrokerSafeExceptionReporterFilter"
 ALLOWED_HOSTS = env.django_allowed_hosts
 
 SECURE_SSL_REDIRECT = env.django_https
@@ -95,6 +97,25 @@ DATABASES = {
     }
 }
 
+CELERY_BROKER_URL = env.rabbitmq_url
+CELERY_TASK_DEFAULT_QUEUE = "default"
+CELERY_TASK_DEFAULT_QUEUE_TYPE = "quorum"
+# Lets countdowns wait in RabbitMQ, not the worker.
+CELERY_TASK_DEFAULT_EXCHANGE_TYPE = "topic"
+# RabbitMQ 4.3 refuses Celery's default control and event queues.
+CELERY_CONTROL_QUEUE_EXCLUSIVE = True
+CELERY_EVENT_QUEUE_EXCLUSIVE = True
+CELERY_BROKER_TRANSPORT_OPTIONS = {"confirm_publish": True}
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Explicit per the Security guide: pickle can run code.
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_IGNORE_RESULT = True
+# A killed worker's task is redelivered: tasks must be idempotent.
+CELERY_TASK_ACKS_LATE = True
+# Else the redelivered copy runs alongside this one.
+CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
 AUTH_USER_MODEL = "users.User"
 # Replaces ModelBackend; listing both lets throttled logins through.
 AUTHENTICATION_BACKENDS = ["users.backends.ThrottledModelBackend"]
@@ -147,3 +168,4 @@ LOGGING = build_logging(env.django_logging)
 configure_structlog()
 # Its ipware trusts X-Forwarded-For; core.signals binds REMOTE_ADDR instead.
 DJANGO_STRUCTLOG_IP_LOGGING_ENABLED = False
+DJANGO_STRUCTLOG_CELERY_ENABLED = True

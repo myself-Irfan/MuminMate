@@ -1,10 +1,13 @@
-.PHONY: run up down stack test lint format typecheck
+.PHONY: run worker up down stack test lint format typecheck
 
 run:
 	uv run python manage.py runserver
 
+worker:
+	docker compose up --build --watch worker
+
 up:
-	docker compose up -d --wait db
+	docker compose up -d --wait db rabbitmq
 
 down:
 	docker compose down
