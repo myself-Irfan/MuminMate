@@ -177,6 +177,24 @@ Each request logs `request_started` and `request_finished` (`request_failed` on 
   include data from the database (a duplicate-key error names the email), so treat logs as personal
   data and restrict who can read them.
 
+Auth events (each logged once, from wherever the decision is made; every line also has `request_id`
+and `ip`):
+
+| Event | Level | Keys |
+|---|---|---|
+| `login_succeeded` | info | `user_id` |
+| `login_failed` | warning | `reason` (`bad_credentials`, `throttled`), `email_digest`, `user_id` (`null` without an account, and always when throttled: no lookup) |
+| `login_refused` | warning | `reason` (`privileged_account`: staff at the consumer login; `not_staff`: a consumer at the admin login), `user_id` |
+| `logout_succeeded` | info | `user_id` |
+| `session_expired` | info, warning when `login_time_missing` | `reason` (`absolute_age` with `session_age_seconds`, `login_time_missing`), `user_id` |
+| `signup_succeeded` | info | `user_id` |
+| `signup_ignored` | info | `reason` (`email_taken`), `user_id` of the existing account |
+
+`email_digest` is the same keyed hash the `login_failures` table stores, so many failures on one
+address show up even when it has no account; the email itself is never logged. The pages look the
+same whatever the outcome: only these lines tell a wrong password from throttling, or a new signup
+from a taken one.
+
 Reading logs: the `make run` terminal; `docker compose logs -f web` for `make stack`;
 `kubectl logs -f deploy/<name>` (`--previous` after a crash) in Kubernetes. To see the production
 format locally, set `"format":"json"` and pipe through `jq`. The app writes no log files (Twelve-Factor
@@ -255,10 +273,10 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ## Project layout
 
 ```
-config/    settings, env, URL, API and Celery wiring
+config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
 users/     custom user model (email login, no username), manager, admin, signup, login/logout, session
-           timeouts, login throttling
+           timeouts, login throttling, auth event logging
 web/       server-rendered pages (home)
 templates/ shared layout (base.html)
 static/    CSS, fonts, logos (self-hosted, with licences)

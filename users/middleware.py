@@ -2,6 +2,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+import structlog
 from django.conf import settings
 from django.contrib.auth import logout
 from django.contrib.auth.middleware import LoginRequiredMiddleware
@@ -11,6 +12,8 @@ from django.shortcuts import redirect
 
 from users.enums import SessionKey
 from users.models import User
+
+logger = structlog.get_logger(__name__)
 
 
 class SessionTimeoutMiddleware:
@@ -26,21 +29,29 @@ class SessionTimeoutMiddleware:
         return self.get_response(request)
 
     def _apply_timeouts(self, request: HttpRequest) -> None:
+        login_at = request.session.get(SessionKey.LOGIN_AT)
+        # Fail closed: a session without login_at counts as expired.
+        if login_at is None:
+            logger.warning("session_expired", reason="login_time_missing", user_id=request.user.pk)
+            logout(request)
+            return
         now = int(time.time())
-        if self._has_reached_absolute_age(request.session, now):
+        session_age = now - login_at
+        if session_age >= settings.SESSION_ABSOLUTE_AGE:
+            logger.info(
+                "session_expired",
+                reason="absolute_age",
+                user_id=request.user.pk,
+                session_age_seconds=session_age,
+            )
             logout(request)
         else:
-            self._refresh_idle_expiry(request.session, now)
+            self._refresh_idle_expiry(request.session, login_at, now)
 
-    def _has_reached_absolute_age(self, session: SessionBase, now: int) -> bool:
-        login_at = session.get(SessionKey.LOGIN_AT)
-        # Fail closed: a session without login_at counts as expired.
-        return login_at is None or now - login_at >= settings.SESSION_ABSOLUTE_AGE
-
-    def _refresh_idle_expiry(self, session: SessionBase, now: int) -> None:
+    def _refresh_idle_expiry(self, session: SessionBase, login_at: int, now: int) -> None:
         # Renew before expiry even when idle is shorter than the interval.
         refresh_after = min(self.refresh_interval_seconds, settings.SESSION_COOKIE_AGE // 2)
-        last_refreshed = session.get(SessionKey.REFRESHED_AT, session[SessionKey.LOGIN_AT])
+        last_refreshed = session.get(SessionKey.REFRESHED_AT, login_at)
         if now - last_refreshed >= refresh_after:
             session[SessionKey.REFRESHED_AT] = now
 

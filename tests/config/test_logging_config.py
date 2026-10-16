@@ -13,7 +13,7 @@ from django.test import Client
 
 from config.env import LogSettings
 from core.masking import DataMasker
-from tests.logging_support import json_lines, route_logs_to_buffer
+from tests.logging_support import events, json_lines, route_logs_to_buffer
 from users.models import User
 
 pytestmark = pytest.mark.usefixtures("restore_logging")
@@ -157,7 +157,7 @@ def test_request_finished_carries_user_id(
 
     client.get("/")
 
-    [finished] = [line for line in json_lines(json_logs) if line["event"] == "request_finished"]
+    [finished] = events(json_logs, "request_finished")
     assert finished["user_id"] == consumer_user.pk
 
 
