@@ -25,3 +25,12 @@ def drop_successful_probes(
     if event_dict.get("is_probe") and is_routine_event and not has_failed:
         raise structlog.DropEvent
     return event_dict
+
+
+# django-structlog's task_failed passes the exception as a key, outside an except block.
+def move_exception_to_exc_info(
+    _logger: WrappedLogger, _method_name: str, event_dict: EventDict
+) -> EventDict:
+    if isinstance(event_dict.get("exception"), BaseException):
+        event_dict["exc_info"] = event_dict.pop("exception")
+    return event_dict

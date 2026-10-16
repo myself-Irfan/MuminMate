@@ -5,7 +5,7 @@ from structlog.tracebacks import ExceptionDictTransformer
 from structlog.typing import Processor
 
 from config.env import LogSettings
-from core.log_processors import drop_successful_probes, mask_sensitive
+from core.log_processors import drop_successful_probes, mask_sensitive, move_exception_to_exc_info
 
 
 def build_shared_processors() -> list[Processor]:
@@ -46,6 +46,7 @@ def build_logging(log_settings: LogSettings) -> dict[str, Any]:
                 "foreign_pre_chain": build_shared_processors(),
                 "processors": [
                     structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    move_exception_to_exc_info,
                     render_exception,
                     mask_sensitive,
                     renderer,
@@ -72,6 +73,9 @@ def build_logging(log_settings: LogSettings) -> dict[str, Any]:
             "uvicorn": {"handlers": [], "level": log_settings.level, "propagate": True},
             # Else it propagates and logs unmasked query strings.
             "uvicorn.access": {"handlers": [], "propagate": False},
+            # Duplicates of task_* events (success logs the return value); errors kept.
+            "celery.app.trace": {"level": "WARNING"},
+            "celery.worker.strategy": {"level": "WARNING"},
         },
     }
 

@@ -5,6 +5,8 @@ x-app: &app
   environment:
     POSTGRES_HOST: db
     POSTGRES_PORT: "5432"
+    RABBITMQ_HOST: rabbitmq
+    RABBITMQ_PORT: "5672"
 
 services:
   db:
@@ -23,12 +25,52 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:4.3.6-management@sha256:8d0592c8f13b9ca76d844aa269f54461503223f36d0bf955859608d78baaf8fb
+    # Data is stored per node name, which comes from the hostname.
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:?set RABBITMQ_VHOST in .env}
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:?set RABBITMQ_PORT in .env}:5672"
+      - "127.0.0.1:15673:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/5672"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   migrate:
     <<: *app
     command: ["python", "manage.py", "migrate", "--noinput"]
     depends_on:
       db:
         condition: service_healthy
+
+  worker:
+    <<: *app
+    # --quiet: no plain-text banner, so stdout stays JSON.
+    command: ["celery", "-A", "config", "--quiet", "worker", "-Q", "default", "--concurrency", "2"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Rebuild, not sync: the image's code is read-only.
+    develop:
+      watch:
+        - action: rebuild
+          path: .
+    healthcheck:
+      # Without --destination, any worker's reply passes.
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination celery@$$HOSTNAME --timeout 5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   web:
     <<: *app
@@ -45,3 +87,4 @@ services:
 
 volumes:
   db-data:
+  rabbitmq-data:

@@ -22,6 +22,11 @@ env:
   POSTGRES_HOST: localhost
   POSTGRES_PORT: "5432"
   POSTGRES_POOL_TIMEOUT_SECONDS: "5"
+  RABBITMQ_HOST: localhost
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: muminmate
+  RABBITMQ_PASSWORD: ci-only-not-a-secret
+  RABBITMQ_VHOST: muminmate
   DJANGO_HTTPS: "false"
   DJANGO_HSTS_SECONDS: "0"
   DJANGO_SESSION_IDLE_SECONDS: "10800"
@@ -73,6 +78,19 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      rabbitmq:
+        image: rabbitmq:4.3.6-management@sha256:8d0592c8f13b9ca76d844aa269f54461503223f36d0bf955859608d78baaf8fb
+        env:
+          RABBITMQ_DEFAULT_USER: muminmate
+          RABBITMQ_DEFAULT_PASS: ci-only-not-a-secret
+          RABBITMQ_DEFAULT_VHOST: muminmate
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "bash -c '</dev/tcp/localhost/5672'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - *checkout
       - *setup-uv
@@ -132,12 +150,21 @@ jobs:
       - &start-web
         name: Start Web
         run: |
-          docker run --rm --network host --env-file <(env | grep -E '^(DJANGO|POSTGRES)_') \
+          docker run --rm --network host --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') \
             muminmate python manage.py migrate --noinput
           docker run --detach --name web --network host \
-            --env-file <(env | grep -E '^(DJANGO|POSTGRES)_') muminmate
+            --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') muminmate
           curl --fail --retry 10 --retry-delay 1 --retry-all-errors \
             http://localhost:8000/api/health/ready
+      - name: Smoke Test Worker
+        run: |
+          docker run --detach --name worker --network host \
+            --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') \
+            muminmate celery -A config --quiet worker -Q default --concurrency 2
+          for _ in $(seq 10); do
+            docker exec worker celery -A config inspect ping --timeout 5 && exit 0
+          done
+          exit 1
       - name: Smoke Test Static Files
         run: |
           assets=$(curl --fail --silent --show-error http://localhost:8000/accounts/login/ \
@@ -156,6 +183,9 @@ jobs:
         name: Web Logs
         if: failure()
         run: docker logs web || true
+      - name: Worker Logs
+        if: failure()
+        run: docker logs worker || true
 
   load_test:
     needs: image

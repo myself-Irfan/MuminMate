@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from http import HTTPStatus
+from typing import NoReturn
 from unittest.mock import Mock
 
 import pytest
@@ -18,7 +19,7 @@ from users.models import User
 pytestmark = pytest.mark.usefixtures("restore_logging")
 
 
-def _raise_chained_error() -> None:
+def _raise_chained_error() -> NoReturn:
     try:
         raise ValueError("Key (email)=(alice@example.com) already exists.")
     except ValueError as error:
@@ -31,6 +32,19 @@ def _log_chained_error(log_settings: LogSettings) -> io.StringIO:
         _raise_chained_error()
     except RuntimeError:
         structlog.get_logger("tests").exception("thing_failed")
+    return buffer
+
+
+def _caught_chained_error() -> RuntimeError:
+    try:
+        _raise_chained_error()
+    except RuntimeError as error:
+        return error
+
+
+def _log_failed_task(log_settings: LogSettings) -> io.StringIO:
+    buffer = route_logs_to_buffer(log_settings)
+    structlog.get_logger("tests").exception("task_failed", exception=_caught_chained_error())
     return buffer
 
 
@@ -109,6 +123,21 @@ def test_console_exception_is_text_traceback() -> None:
     assert "ValueError: Key (email)=(alice@example.com) already exists." in buffer.getvalue()
 
 
+def test_json_exception_passed_as_key_is_structured() -> None:
+    buffer = _log_failed_task(LogSettings(level="INFO", format="json"))
+
+    [error, cause] = json.loads(buffer.getvalue())["exception"]
+    assert error["exc_type"] == "RuntimeError"
+    assert cause["exc_type"] == "ValueError"
+
+
+def test_console_exception_passed_as_key_is_text_traceback() -> None:
+    buffer = _log_failed_task(LogSettings(level="INFO", format="console"))
+
+    assert "Traceback (most recent call last)" in buffer.getvalue()
+    assert "RuntimeError: save failed" in buffer.getvalue()
+
+
 @pytest.mark.django_db
 def test_request_events_carry_request_id(client: Client, json_logs: io.StringIO) -> None:
     response = client.get("/accounts/login/")
@@ -182,3 +211,13 @@ def test_uvicorn_access_log_has_no_handler() -> None:
     route_logs_to_buffer(LogSettings(level="INFO", format="json"))
 
     assert not logging.getLogger("uvicorn.access").hasHandlers()
+
+
+@pytest.mark.parametrize("name", ["celery.app.trace", "celery.worker.strategy"])
+def test_celery_task_info_lines_dropped_errors_kept(name: str) -> None:
+    buffer = route_logs_to_buffer(LogSettings(level="INFO", format="json"))
+
+    logging.getLogger(name).info("Task t[1] succeeded in 0.01s: result")
+    logging.getLogger(name).error("Process cleanup failed")
+
+    assert [line["event"] for line in json_lines(buffer)] == ["Process cleanup failed"]
