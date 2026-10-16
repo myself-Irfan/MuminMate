@@ -25,3 +25,7 @@ def route_logs_to_buffer(log_settings: LogSettings) -> io.StringIO:
 
 def json_lines(buffer: io.StringIO) -> list[dict[str, Any]]:
     return [json.loads(line) for line in buffer.getvalue().splitlines()]
+
+
+def events(buffer: io.StringIO, name: str) -> list[dict[str, Any]]:
+    return [line for line in json_lines(buffer) if line["event"] == name]

@@ -1,9 +1,10 @@
+import io
 from unittest.mock import Mock
 
 import pytest
 from django.db import IntegrityError
-from django.db.models import QuerySet
 
+from tests.logging_support import events
 from users.models import User
 from users.services.user_service import UserService
 
@@ -37,6 +38,15 @@ def test_create_fails_when_email_taken_in_other_case(password: str) -> None:
 
     with pytest.raises(IntegrityError):
         UserService().create(email="IRFAN@example.com", password=password)
+
+
+def test_get_id_by_email_finds_user_in_any_case(consumer_user: User) -> None:
+    assert UserService().get_id_by_email(f" {consumer_user.email.upper()} ") == consumer_user.pk
+
+
+@pytest.mark.django_db
+def test_get_id_by_email_returns_none_when_unknown() -> None:
+    assert UserService().get_id_by_email("nobody@example.com") is None
 
 
 @pytest.mark.django_db
@@ -73,15 +83,26 @@ def test_signup_keeps_existing_user_when_email_is_staff(staff_user: User, passwo
     assert User.objects.filter(email=staff_user.email).count() == 1
 
 
-# Another signup commits between exists() and our insert.
+# Another signup commits between our lookup and our insert.
 def test_signup_treats_parallel_signup_as_taken(
     monkeypatch: pytest.MonkeyPatch, consumer_user: User, password: str
 ) -> None:
-    monkeypatch.setattr(QuerySet, "exists", Mock(return_value=False))
+    monkeypatch.setattr(UserService, "get_id_by_email", Mock(side_effect=[None, consumer_user.pk]))
 
     UserService().signup(email=consumer_user.email, password=password)
 
     assert User.objects.count() == 1
+
+
+def test_parallel_signup_logged_as_ignored(
+    monkeypatch: pytest.MonkeyPatch, json_logs: io.StringIO, consumer_user: User, password: str
+) -> None:
+    monkeypatch.setattr(UserService, "get_id_by_email", Mock(side_effect=[None, consumer_user.pk]))
+
+    UserService().signup(email=consumer_user.email, password=password)
+
+    [line] = events(json_logs, "signup_ignored")
+    assert (line["reason"], line["user_id"]) == ("email_taken", consumer_user.pk)
 
 
 @pytest.mark.django_db

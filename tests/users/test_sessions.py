@@ -1,3 +1,4 @@
+import io
 from datetime import timedelta
 from http import HTTPStatus
 from unittest.mock import Mock
@@ -9,6 +10,7 @@ from django.test import Client
 from django.utils import timezone
 from pytest_django import Settings
 
+from tests.logging_support import events, json_lines
 from users.enums import SessionKey
 from users.middleware import SessionTimeoutMiddleware
 from users.models import User
@@ -137,6 +139,44 @@ def test_request_logs_out_when_login_at_missing(
 
     assert response.status_code == HTTPStatus.FOUND
     assert SESSION_KEY not in client.session
+
+
+def test_absolute_age_logged_before_logout(
+    client: Client, admin_user: User, clock: Mock, json_logs: io.StringIO
+) -> None:
+    client.force_login(admin_user)
+    clock.return_value = 1_000_600.0
+
+    client.get("/admin/")
+
+    [expired] = events(json_logs, "session_expired")
+    assert (
+        expired["level"],
+        expired["reason"],
+        expired["user_id"],
+        expired["session_age_seconds"],
+    ) == ("info", "absolute_age", admin_user.pk, 600)
+    order = [line["event"] for line in json_lines(json_logs)]
+    assert order.index("session_expired") < order.index("logout_succeeded")
+
+
+def test_missing_login_at_logged_without_age(
+    client: Client, admin_user: User, clock: Mock, json_logs: io.StringIO
+) -> None:
+    client.force_login(admin_user)
+    session = client.session
+    del session[SessionKey.LOGIN_AT]
+    session.save()
+
+    client.get("/admin/")
+
+    [expired] = events(json_logs, "session_expired")
+    assert (expired["level"], expired["reason"], expired["user_id"]) == (
+        "warning",
+        "login_time_missing",
+        admin_user.pk,
+    )
+    assert "session_age_seconds" not in expired
 
 
 @pytest.mark.django_db

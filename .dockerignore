@@ -9,6 +9,10 @@
 **/*.md
 tests/
 staticfiles/
+media/
+**/*.sqlite3
+**/celerybeat-schedule*
+**/*.log
 design/
 **/__pycache__
 .mypy_cache/

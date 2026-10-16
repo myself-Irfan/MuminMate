@@ -1,8 +1,11 @@
+import structlog
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
 from psycopg.errors import UniqueViolation
 
 from users.models import User
+
+logger = structlog.get_logger(__name__)
 
 
 class UserService:
@@ -11,16 +14,28 @@ class UserService:
 
     # Returns None: callers can't tell new from taken.
     def signup(self, *, email: str, password: str) -> None:
-        if User.objects.filter(email=User.objects.normalize_email(email)).exists():
+        existing_id = self.get_id_by_email(email)
+        if existing_id is not None:
             # Same hashing cost, so timing doesn't tell.
             make_password(password)
+            logger.info("signup_ignored", reason="email_taken", user_id=existing_id)
             return
         try:
             with transaction.atomic():
-                self.create(email=email, password=password)
+                user = self.create(email=email, password=password)
         except IntegrityError as error:
             if not self._is_lost_email_race(error):
                 raise
+            logger.info("signup_ignored", reason="email_taken", user_id=self.get_id_by_email(email))
+        else:
+            logger.info("signup_succeeded", user_id=user.pk)
+
+    def get_id_by_email(self, email: str) -> int | None:
+        return (
+            User.objects.filter(email=User.objects.normalize_email(email))
+            .values_list("pk", flat=True)
+            .first()
+        )
 
     # Postgres names unique=True's constraint <table>_<column>_key.
     def _is_lost_email_race(self, error: IntegrityError) -> bool:

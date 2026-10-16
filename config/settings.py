@@ -33,7 +33,7 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env.django_hsts_seconds > 0
 SILENCED_SYSTEM_CHECKS = ["security.W021"]
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "config.apps.MuminMateAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
