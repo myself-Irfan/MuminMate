@@ -1,0 +1,9 @@
+{% extends "emails/base.txt" %}
+
+{% block content %}Confirm your email to finish setting up your MuminMate account:
+
+{{ verify_url }}
+
+This link expires in {{ expiry }}.{% endblock %}
+
+{% block footer %}If you didn't sign up, ignore this email.{% endblock %}

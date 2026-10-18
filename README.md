@@ -32,12 +32,17 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_SECRET_KEY` | Signing key. Generate with the command in `.env.example` |
 | `DJANGO_DEBUG` | `true` only for local development |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames the app serves |
+| `DJANGO_PUBLIC_URL` | How users reach the site, `scheme://host[:port]` without a trailing slash; links in mail start here |
 | `DJANGO_HTTPS` | `true` only when served over HTTPS (redirect + secure cookies) |
 | `DJANGO_HSTS_SECONDS` | HSTS max-age; `0` locally, start production at `3600` |
-| `DJANGO_SESSION_IDLE_SECONDS` | Log out after this long without a request (`10800` = 3 h) |
-| `DJANGO_SESSION_ABSOLUTE_SECONDS` | Log out this long after login, even if active (`43200` = 12 h); at least the idle value |
+| `DJANGO_SESSION_IDLE_MINUTES` | Log out after this long without a request (`180`) |
+| `DJANGO_SESSION_ABSOLUTE_HOURS` | Log out this long after login, even if active (`12`); at least the idle value |
+| `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS` | Password reset and email verification links expire after this long (`72`); a change also applies to links already sent |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
 | `DJANGO_LOGIN_LIMITS` | Failed-login limits as one-line JSON (see Login limits below) |
+| `DJANGO_EMAIL` | Mail server as one-line JSON (see Email below) |
+| `DJANGO_EMAIL_HOST_USER` | Mail server login; empty when it needs none (Mailpit), else set with the password |
+| `DJANGO_EMAIL_HOST_PASSWORD` | Mail server password; empty or set together with the user |
 | `POSTGRES_DB` | Database name |
 | `POSTGRES_USER` | Database user |
 | `POSTGRES_PASSWORD` | Database password |
@@ -54,9 +59,9 @@ Every variable is required; the app refuses to start if one is missing.
 
 | Command | Does |
 |---|---|
-| `make up` | Start the database and RabbitMQ (for `make run`, `make worker` and `make test`) |
+| `make up` | Start the database, RabbitMQ and Mailpit (for `make run`, `make worker` and `make test`) |
 | `make down` | Stop all containers |
-| `make stack` | Build and run the production image (db, rabbitmq, migrate, worker, web) on :8000 |
+| `make stack` | Build and run the production image (db, rabbitmq, mailpit, migrate, worker, web) on :8000 |
 | `make run` | Start the dev server on :8000 (API docs at `/api/docs`) |
 | `make worker` | Run the Celery worker in Docker, attached; rebuilds it when a file changes (Compose Watch) |
 | `make lint` | Lint and format check |
@@ -97,11 +102,15 @@ before that (the invite email arrives with email verification).
 
 ## Signup
 
-`/accounts/signup/` never reveals whether an email already has an account: a new and a taken email get
-the same redirect, the same page and the same Argon2 hash (the taken path hashes the password and
-discards it, so timing differs only by the insert), and a race between two signups for one email ends
-the same way. Until email verification lands, a new account can log in straight away and a taken email
-gets no email.
+`/accounts/signup/` says when an email already has an account ("An account with this email already
+exists. Log in instead."), and nothing is saved or mailed. A race between two signups for one email
+ends the same way: the loser gets the same message, never an error page. Signup isn't rate-limited yet
+(1.9b).
+
+After signup, the worker mails a link to confirm the address. The link opens a confirm page, and only
+its button confirms, so mail scanners that open links change nothing. It stops working once used,
+after `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`, or when the email changes, and every bad link gets the
+same page. Logins aren't refused for unconfirmed emails yet (1.9b).
 
 Email addresses are ASCII only, everywhere (signup, admin, `createsuperuser`, and a database
 constraint): lookalike letters such as `ı` would otherwise make `ırfan@` a different account from
@@ -110,8 +119,8 @@ send (and users can type) its `xn--` form.
 
 ## Sessions
 
-Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE_SECONDS` without a
-request, and `DJANGO_SESSION_ABSOLUTE_SECONDS` after login even if active (logging in again restarts
+Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE_MINUTES` without a
+request, and `DJANGO_SESSION_ABSOLUTE_HOURS` after login even if active (logging in again restarts
 it). Activity refreshes the session at most every 5 minutes, so it can end up to 5 minutes before the
 idle limit. With `DJANGO_HTTPS=true` the cookies are named `__Host-sessionid` and `__Host-csrftoken`.
 
@@ -172,10 +181,12 @@ Each request logs `request_started` and `request_finished` (`request_failed` on 
 - **IP:** `REMOTE_ADDR`, so set uvicorn's `FORWARDED_ALLOW_IPS` behind a proxy (see Login limits); a
   client's own `X-Forwarded-For` is never trusted.
 - **Masking:** values of keys that name a secret (`password`, `token`, `api_key`, `cookie`,
-  `authorization`, …, in any spelling) and of such query-string parameters are logged as `***`. Our
-  events carry ids, never emails or message text. An exception's message is logged as written and can
-  include data from the database (a duplicate-key error names the email), so treat logs as personal
-  data and restrict who can read them.
+  `authorization`, …, in any spelling) and of such query-string parameters are logged as `***`.
+  Tokens inside URL paths (email verification, password reset) are logged as `*****`, and those pages
+  send `Referrer-Policy: same-origin` (the token goes to no other site). Our events carry ids, never
+  emails or message text. An exception's message is logged as written and can include data from the
+  database (a duplicate-key error names the email), so treat logs as personal data and restrict who
+  can read them.
 
 Auth events (each logged once, from wherever the decision is made; every line also has `request_id`
 and `ip`):
@@ -188,12 +199,11 @@ and `ip`):
 | `logout_succeeded` | info | `user_id` |
 | `session_expired` | info, warning when `login_time_missing` | `reason` (`absolute_age` with `session_age_seconds`, `login_time_missing`), `user_id` |
 | `signup_succeeded` | info | `user_id` |
-| `signup_ignored` | info | `reason` (`email_taken`), `user_id` of the existing account |
+| `signup_refused` | info | `reason` (`email_taken`), `user_id` of the existing account |
 
 `email_digest` is the same keyed hash the `login_failures` table stores, so many failures on one
 address show up even when it has no account; the email itself is never logged. The pages look the
-same whatever the outcome: only these lines tell a wrong password from throttling, or a new signup
-from a taken one.
+same whatever the outcome: only these lines tell a wrong password from throttling.
 
 Reading logs: the `make run` terminal; `docker compose logs -f web` for `make stack`;
 `kubectl logs -f deploy/<name>` (`--previous` after a crash) in Kubernetes. To see the production
@@ -210,12 +220,17 @@ rebuilt when a file changes. Its logs stream there and in `docker compose logs -
 take a task.
 
 To debug a task with breakpoints, stop the Docker worker (`docker compose stop worker`) and run
-`uv run celery -A config worker -Q default --pool solo` from your IDE: `solo` runs each task in that
+`uv run celery -A config worker -Q default,email --pool solo` from your IDE: `solo` runs each task in that
 process. Don't run the default pool on macOS: with Celery 5.6.3 and billiard 4.3 every task fails
 there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in Celery 5.7).
 
-- There are no tasks yet: the worker consumes the `default` queue and answers
-  `uv run celery -A config inspect ping`. Each kind of work will get its own queue and worker.
+- Each kind of task has its own queue (`email` for now), declared in `CELERY_TASK_QUEUES` and routed
+  in `CELERY_TASK_ROUTES`, on one topic exchange (`tasks`). Celery also requires a `default` queue: it
+  catches tasks without a route, and a test fails for any task that has none. The `worker` service
+  consumes the light queues (`-Q default,email`); heavy ones get their own worker.
+- Signup mail is sent by the `send_signup_email` task: it retries temporary SMTP errors with
+  growing, randomised waits (up to 5 times, about 12 minutes on average) and gives up at once on a
+  refused address or a wrong login. Each attempt is limited to 60 seconds.
 - Tasks take ids, never personal data, and are queued only after the transaction commits. A task
   runs again if its worker is killed or loses the broker mid-task, so every task must be safe to run
   twice; one whose process alone crashes (out of memory, say) is marked failed instead.
@@ -227,6 +242,38 @@ there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in C
   (`task_enqueued`, `task_started`, `task_succeeded`, `task_failed`).
 - Each worker sets `--concurrency` (Celery's default is one process per CPU the machine has, not
   the container's share); scale by running more workers.
+
+Processes, all from the one image:
+
+| Process | Command | Queues | Concurrency |
+|---|---|---|---|
+| web | `uvicorn config.asgi:application --host 0.0.0.0 --port 8000` | — | 1; scale by replicas |
+| migrate | `python manage.py migrate --noinput` (one-shot, before web and workers) | — | — |
+| worker | `celery -A config --quiet worker -Q default,email -n default@%h --concurrency 2` | `default`, `email` | 2; scale by replicas |
+
+## Email
+
+`DJANGO_EMAIL` is the mail server, as JSON on one line; expanded, the `.env.example` value is:
+
+```json
+{
+  "host": "localhost",
+  "port": 1025,
+  "use_tls": false,
+  "timeout_seconds": 10,
+  "default_from_email": "MuminMate <no-reply@localhost>"
+}
+```
+
+`use_tls` starts TLS on a plain connection (STARTTLS, usually port 587); `timeout_seconds` bounds a hung
+server; `default_from_email` is what recipients see as the sender, and its domain must be authorized by
+the provider (SPF/DKIM) or mail lands in spam. Unknown or missing keys stop the app at startup. The
+login (`DJANGO_EMAIL_HOST_USER`, `DJANGO_EMAIL_HOST_PASSWORD`) is separate because the password is a
+secret; both are empty or both set.
+
+Locally, [Mailpit](https://mailpit.axllent.org) catches every mail and delivers nothing: `make up`
+starts it; read the inbox at http://127.0.0.1:8025. The worker sends the mail, so inside compose it
+reaches Mailpit as `mailpit`. Tests never send mail (pytest-django uses Django's in-memory backend).
 
 ## Load tests
 
@@ -275,8 +322,8 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ```
 config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
-users/     custom user model (email login, no username), manager, admin, signup, login/logout, session
-           timeouts, login throttling, auth event logging
+users/     custom user model (email login, no username), manager, admin, signup, email verification,
+           login/logout, session timeouts, login throttling, auth event logging
 web/       server-rendered pages (home)
 templates/ shared layout (base.html)
 static/    CSS, fonts, logos (self-hosted, with licences)

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Invalid link - MuminMate{% endblock %}
+
+{% block content %}
+  <article class="card">
+    {% include "users/partials/greeting.html" %}
+    {% include "partials/divider.html" %}
+    <h1>This link is invalid or has expired</h1>
+    <p>It may have been used already. If your email is confirmed, you can <a href="{% url 'login' %}">log in</a>.</p>
+  </article>
+{% endblock %}

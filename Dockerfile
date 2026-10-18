@@ -20,10 +20,13 @@ COPY . .
 
 # Placeholders: settings require every env var.
 RUN DJANGO_SECRET_KEY=collectstatic DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS= \
-    DJANGO_HTTPS=false DJANGO_HSTS_SECONDS=0 DJANGO_SESSION_IDLE_SECONDS=1 \
-    DJANGO_SESSION_ABSOLUTE_SECONDS=1 \
+    DJANGO_PUBLIC_URL=http://localhost \
+    DJANGO_HTTPS=false DJANGO_HSTS_SECONDS=0 DJANGO_SESSION_IDLE_MINUTES=1 \
+    DJANGO_SESSION_ABSOLUTE_HOURS=1 DJANGO_PASSWORD_RESET_TIMEOUT_HOURS=1 \
     DJANGO_LOGGING='{"level":"INFO","format":"json"}' \
     DJANGO_LOGIN_LIMITS='{"email_ip":{"max_failures":1,"window_seconds":1},"ip":{"max_failures":1,"window_seconds":1},"email":{"max_failures":1,"window_seconds":1,"backoff_seconds":1}}' \
+    DJANGO_EMAIL='{"host":"collectstatic","port":25,"use_tls":false,"timeout_seconds":1,"default_from_email":"collectstatic"}' \
+    DJANGO_EMAIL_HOST_USER= DJANGO_EMAIL_HOST_PASSWORD= \
     POSTGRES_DB= POSTGRES_USER= \
     POSTGRES_PASSWORD=collectstatic POSTGRES_HOST= POSTGRES_PORT=0 POSTGRES_POOL_TIMEOUT_SECONDS=1 \
     RABBITMQ_HOST= RABBITMQ_PORT=0 RABBITMQ_USER=collectstatic RABBITMQ_PASSWORD=collectstatic \

@@ -1,0 +1,7 @@
+{% autoescape off %}السَّلَامُ عَلَيْكُمْ
+Assalamu Alaikum
+
+{% block content %}{% endblock %}
+
+MuminMate
+{% block footer %}{% endblock %}{% endautoescape %}

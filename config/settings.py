@@ -1,6 +1,8 @@
+from datetime import timedelta
 from pathlib import Path
 
 import django_stubs_ext
+from kombu import Queue
 
 from config.env import Env
 from config.logging_config import build_logging, configure_structlog
@@ -25,8 +27,8 @@ CSRF_COOKIE_SECURE = env.django_https
 # `__Host-` cookies must be Secure, so plain names over local HTTP.
 SESSION_COOKIE_NAME = "__Host-sessionid" if env.django_https else "sessionid"
 CSRF_COOKIE_NAME = "__Host-csrftoken" if env.django_https else "csrftoken"
-SESSION_COOKIE_AGE = env.django_session_idle_seconds
-SESSION_ABSOLUTE_AGE = env.django_session_absolute_seconds
+SESSION_COOKIE_AGE = int(timedelta(minutes=env.django_session_idle_minutes).total_seconds())
+SESSION_ABSOLUTE_AGE = int(timedelta(hours=env.django_session_absolute_hours).total_seconds())
 SECURE_HSTS_SECONDS = env.django_hsts_seconds
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.django_hsts_seconds > 0
 # HSTS preload is near-irreversible and needs a real domain; revisit at release.
@@ -99,9 +101,19 @@ DATABASES = {
 
 CELERY_BROKER_URL = env.rabbitmq_url
 CELERY_TASK_DEFAULT_QUEUE = "default"
-CELERY_TASK_DEFAULT_QUEUE_TYPE = "quorum"
-# Lets countdowns wait in RabbitMQ, not the worker.
+CELERY_TASK_DEFAULT_EXCHANGE = "tasks"
+# Native delayed delivery skips direct exchanges: countdowns would hold a worker.
 CELERY_TASK_DEFAULT_EXCHANGE_TYPE = "topic"
+CELERY_TASK_DEFAULT_ROUTING_KEY = "task.default"
+CELERY_TASK_QUEUES = [
+    Queue("default", routing_key="task.#", queue_arguments={"x-queue-type": "quorum"}),
+    Queue("email", routing_key="email.#", queue_arguments={"x-queue-type": "quorum"}),
+]
+CELERY_TASK_ROUTES = {
+    "users.tasks.send_signup_email": {"queue": "email", "routing_key": "email.signup"},
+}
+# A typo'd queue name fails at publish instead of creating a queue no worker reads.
+CELERY_TASK_CREATE_MISSING_QUEUES = False
 # RabbitMQ 4.3 refuses Celery's default control and event queues.
 CELERY_CONTROL_QUEUE_EXCLUSIVE = True
 CELERY_EVENT_QUEUE_EXCLUSIVE = True
@@ -124,6 +136,20 @@ LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
 
 LOGIN_LIMITS = env.django_login_limits
+# Also the lifetime of email verification links (users/tokens.py).
+PASSWORD_RESET_TIMEOUT = int(
+    timedelta(hours=env.django_password_reset_timeout_hours).total_seconds()
+)
+# HttpUrl renders a trailing "/"; links append reverse() paths.
+PUBLIC_URL = str(env.django_public_url).rstrip("/")
+
+EMAIL_HOST = env.django_email.host
+EMAIL_PORT = env.django_email.port
+EMAIL_USE_TLS = env.django_email.use_tls
+EMAIL_TIMEOUT = env.django_email.timeout_seconds
+DEFAULT_FROM_EMAIL = env.django_email.default_from_email
+EMAIL_HOST_USER = env.django_email_host_user
+EMAIL_HOST_PASSWORD = env.django_email_host_password.get_secret_value()
 
 # With real users, add hashers first and never remove one: its hashes stop verifying.
 PASSWORD_HASHERS = [

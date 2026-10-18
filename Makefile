@@ -7,7 +7,7 @@ worker:
 	docker compose up --build --watch worker
 
 up:
-	docker compose up -d --wait db rabbitmq
+	docker compose up -d --wait db rabbitmq mailpit
 
 down:
 	docker compose down

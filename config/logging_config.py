@@ -5,7 +5,12 @@ from structlog.tracebacks import ExceptionDictTransformer
 from structlog.typing import Processor
 
 from config.env import LogSettings
-from core.log_processors import drop_successful_probes, mask_sensitive, move_exception_to_exc_info
+from core.log_processors import (
+    drop_successful_probes,
+    mask_sensitive,
+    mask_url_tokens,
+    move_exception_to_exc_info,
+)
 
 
 def build_shared_processors() -> list[Processor]:
@@ -45,6 +50,7 @@ def build_logging(log_settings: LogSettings) -> dict[str, Any]:
                 "()": structlog.stdlib.ProcessorFormatter,
                 "foreign_pre_chain": build_shared_processors(),
                 "processors": [
+                    mask_url_tokens,
                     structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                     move_exception_to_exc_info,
                     render_exception,

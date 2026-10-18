@@ -1,10 +1,8 @@
 from django.contrib.auth import views as auth_views
-from django.contrib.auth.decorators import login_not_required
 from django.urls import path
-from django.views.generic import TemplateView
 
 from users.forms import ConsumerAuthenticationForm
-from users.views import SignupView
+from users.views import SignupDoneView, SignupView, VerifyEmailView
 
 urlpatterns = [
     path(
@@ -16,9 +14,10 @@ urlpatterns = [
     ),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("signup/", SignupView.as_view(), name=SignupView.url_name),
+    path("signup/done/", SignupDoneView.as_view(), name=SignupDoneView.url_name),
     path(
-        "signup/done/",
-        login_not_required(TemplateView.as_view(template_name="registration/signup_done.html")),
-        name="signup_done",
+        "verify/<uidb64>/<token>/",
+        VerifyEmailView.as_view(),
+        name=VerifyEmailView.url_name,
     ),
 ]

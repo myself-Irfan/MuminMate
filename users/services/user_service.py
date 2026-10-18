@@ -1,9 +1,12 @@
+from functools import partial
+
 import structlog
-from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
 from psycopg.errors import UniqueViolation
 
+from users.exceptions import EmailTakenError
 from users.models import User
+from users.tasks import send_signup_email
 
 logger = structlog.get_logger(__name__)
 
@@ -12,33 +15,32 @@ class UserService:
     def create(self, *, email: str, password: str | None, is_staff: bool = False) -> User:
         return User.objects.create_user(email=email, password=password, is_staff=is_staff)
 
-    # Returns None: callers can't tell new from taken.
     def signup(self, *, email: str, password: str) -> None:
-        existing_id = self.get_id_by_email(email)
-        if existing_id is not None:
-            # Same hashing cost, so timing doesn't tell.
-            make_password(password)
-            logger.info("signup_ignored", reason="email_taken", user_id=existing_id)
-            return
+        user_id = self._create_signup_user(email, password)
+        transaction.on_commit(partial(send_signup_email.delay, user_id))
+
+    def get_id_by_email(self, email: str) -> int | None:
+        try:
+            return User.objects.values_list("pk", flat=True).get(
+                email=User.objects.normalize_email(email)
+            )
+        except User.DoesNotExist:
+            return None
+
+    def _create_signup_user(self, email: str, password: str) -> int:
         try:
             with transaction.atomic():
                 user = self.create(email=email, password=password)
         except IntegrityError as error:
-            if not self._is_lost_email_race(error):
+            if not self._is_email_taken(error):
                 raise
-            logger.info("signup_ignored", reason="email_taken", user_id=self.get_id_by_email(email))
-        else:
-            logger.info("signup_succeeded", user_id=user.pk)
-
-    def get_id_by_email(self, email: str) -> int | None:
-        return (
-            User.objects.filter(email=User.objects.normalize_email(email))
-            .values_list("pk", flat=True)
-            .first()
-        )
+            logger.info("signup_refused", reason="email_taken", user_id=self.get_id_by_email(email))
+            raise EmailTakenError("An account with this email already exists.") from error
+        logger.info("signup_succeeded", user_id=user.pk)
+        return user.pk
 
     # Postgres names unique=True's constraint <table>_<column>_key.
-    def _is_lost_email_race(self, error: IntegrityError) -> bool:
+    def _is_email_taken(self, error: IntegrityError) -> bool:
         cause = error.__cause__
         return (
             isinstance(cause, UniqueViolation) and cause.diag.constraint_name == "users_email_key"

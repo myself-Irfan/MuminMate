@@ -3,8 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 from django.db import IntegrityError
+from pytest_django import DjangoCaptureOnCommitCallbacks
 
 from tests.logging_support import events
+from users.exceptions import EmailTakenError
 from users.models import User
 from users.services.user_service import UserService
 
@@ -56,53 +58,67 @@ def test_signup_creates_user_when_email_new(password: str) -> None:
     assert User.objects.get(email="irfan@example.com").check_password(password)
 
 
-def test_signup_keeps_existing_user_when_email_taken_in_other_case(
-    consumer_user: User, password: str
-) -> None:
-    UserService().signup(email="IRFAN@example.com", password=password + "-new")
+# Signup has no lookup: the form's check passed, then another signup committed first.
+def test_signup_raises_when_email_taken_in_other_case(consumer_user: User, password: str) -> None:
+    with pytest.raises(EmailTakenError):
+        UserService().signup(email="IRFAN@example.com", password=password + "-new")
 
     assert User.objects.count() == 1
     consumer_user.refresh_from_db()
     assert consumer_user.check_password(password)
 
 
-def test_signup_hashes_once_when_email_taken(
-    monkeypatch: pytest.MonkeyPatch, consumer_user: User, password: str
+def test_signup_refusal_logged_when_email_taken(
+    json_logs: io.StringIO, consumer_user: User, password: str
 ) -> None:
-    make_password = Mock()
-    monkeypatch.setattr("users.services.user_service.make_password", make_password)
+    with pytest.raises(EmailTakenError):
+        UserService().signup(email=consumer_user.email, password=password)
 
-    UserService().signup(email=consumer_user.email, password=password)
-
-    make_password.assert_called_once_with(password)
-
-
-def test_signup_keeps_existing_user_when_email_is_staff(staff_user: User, password: str) -> None:
-    UserService().signup(email=staff_user.email, password=password + "-new")
-
-    assert User.objects.filter(email=staff_user.email).count() == 1
-
-
-# Another signup commits between our lookup and our insert.
-def test_signup_treats_parallel_signup_as_taken(
-    monkeypatch: pytest.MonkeyPatch, consumer_user: User, password: str
-) -> None:
-    monkeypatch.setattr(UserService, "get_id_by_email", Mock(side_effect=[None, consumer_user.pk]))
-
-    UserService().signup(email=consumer_user.email, password=password)
-
-    assert User.objects.count() == 1
-
-
-def test_parallel_signup_logged_as_ignored(
-    monkeypatch: pytest.MonkeyPatch, json_logs: io.StringIO, consumer_user: User, password: str
-) -> None:
-    monkeypatch.setattr(UserService, "get_id_by_email", Mock(side_effect=[None, consumer_user.pk]))
-
-    UserService().signup(email=consumer_user.email, password=password)
-
-    [line] = events(json_logs, "signup_ignored")
+    [line] = events(json_logs, "signup_refused")
     assert (line["reason"], line["user_id"]) == ("email_taken", consumer_user.pk)
+
+
+@pytest.fixture
+def signup_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr("users.services.user_service.send_signup_email.delay", delay)
+    return delay
+
+
+@pytest.mark.django_db
+def test_signup_queues_signup_email_only_after_commit(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    signup_email_delay: Mock,
+    password: str,
+) -> None:
+    with django_capture_on_commit_callbacks() as callbacks:
+        UserService().signup(email="new@example.com", password=password)
+
+    assert len(callbacks) == 1
+    signup_email_delay.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_signup_queues_signup_email_for_new_user(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    signup_email_delay: Mock,
+    password: str,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        UserService().signup(email="new@example.com", password=password)
+
+    signup_email_delay.assert_called_once_with(User.objects.get(email="new@example.com").pk)
+
+
+def test_signup_queues_no_email_when_email_taken(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    consumer_user: User,
+    password: str,
+) -> None:
+    with django_capture_on_commit_callbacks() as callbacks, pytest.raises(EmailTakenError):
+        UserService().signup(email=consumer_user.email, password=password)
+
+    assert callbacks == []
 
 
 @pytest.mark.django_db

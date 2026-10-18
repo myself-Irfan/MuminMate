@@ -11,15 +11,19 @@ def signup_form(email: str, password1: str, password2: str | None = None) -> Sig
     )
 
 
+@pytest.mark.django_db
 def test_signup_form_valid_when_input_valid(password: str) -> None:
     assert signup_form("irfan@example.com", password).is_valid()
 
 
-# Enumeration guard: taken must look like new.
-def test_signup_form_valid_when_email_taken(consumer_user: User, password: str) -> None:
-    assert signup_form(consumer_user.email.upper(), password).is_valid()
+def test_signup_form_fails_when_email_taken(consumer_user: User, password: str) -> None:
+    form = signup_form(f" {consumer_user.email.upper()} ", password)
+
+    assert not form.is_valid()
+    assert form.has_error("email", "email_taken")
 
 
+@pytest.mark.django_db
 def test_signup_form_fails_when_passwords_differ(password: str) -> None:
     form = signup_form("irfan@example.com", password, password + "-other")
 
@@ -27,6 +31,7 @@ def test_signup_form_fails_when_passwords_differ(password: str) -> None:
     assert form.has_error("password2", "password_mismatch")
 
 
+@pytest.mark.django_db
 def test_signup_form_fails_when_password_too_short(short_password: str) -> None:
     form = signup_form("irfan@example.com", short_password)
 
@@ -34,6 +39,7 @@ def test_signup_form_fails_when_password_too_short(short_password: str) -> None:
     assert form.has_error("password2", "password_too_short")
 
 
+@pytest.mark.django_db
 def test_signup_form_fails_when_password_similar_to_email() -> None:
     form = signup_form("irfan.ahmed@example.com", "irfan-example")
 
@@ -75,6 +81,7 @@ def test_signup_form_fails_when_email_not_ascii(email: str, password: str) -> No
     assert form.has_error("email", "email_not_ascii")
 
 
+@pytest.mark.django_db
 def test_signup_form_valid_when_domain_punycode(password: str) -> None:
     assert signup_form("irfan@xn--mnchen-3ya.de", password).is_valid()
 
