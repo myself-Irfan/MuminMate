@@ -7,6 +7,7 @@ x-app: &app
     POSTGRES_PORT: "5432"
     RABBITMQ_HOST: rabbitmq
     RABBITMQ_PORT: "5672"
+    DJANGO_EMAIL: '{"host":"mailpit","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>"}'
 
 services:
   db:
@@ -44,6 +45,12 @@ services:
       timeout: 3s
       retries: 20
 
+  mailpit:
+    image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
   migrate:
     <<: *app
     command: ["python", "manage.py", "migrate", "--noinput"]
@@ -53,13 +60,15 @@ services:
 
   worker:
     <<: *app
-    # --quiet: no plain-text banner, so stdout stays JSON.
-    command: ["celery", "-A", "config", "--quiet", "worker", "-Q", "default", "--concurrency", "2"]
+    # --quiet: no plain-text banner, so stdout stays JSON. -Q: the light queues.
+    command: ["celery", "-A", "config", "--quiet", "worker", "-Q", "default,email", "-n", "default@%h", "--concurrency", "2"]
     depends_on:
       rabbitmq:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
     # Rebuild, not sync: the image's code is read-only.
     develop:
       watch:
@@ -67,7 +76,7 @@ services:
           path: .
     healthcheck:
       # Without --destination, any worker's reply passes.
-      test: ["CMD-SHELL", "celery -A config inspect ping --destination celery@$$HOSTNAME --timeout 5"]
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination default@$$HOSTNAME --timeout 5"]
       interval: 30s
       timeout: 10s
       retries: 3

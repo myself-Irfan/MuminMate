@@ -1,4 +1,5 @@
 import logging
+import re
 
 import pytest
 from celery.app.defaults import SETTING_KEYS
@@ -21,12 +22,40 @@ def test_celery_broker_url_from_settings() -> None:
     assert app.conf.broker_url == settings.CELERY_BROKER_URL
 
 
-def test_queues_are_quorum() -> None:
-    assert app.conf.task_default_queue_type == "quorum"
+def test_every_task_routed_to_a_declared_queue() -> None:
+    app.loader.import_default_modules()
+    task_names = {name for name in app.tasks if not name.startswith("celery.")}
+    declared = {queue.name for queue in app.conf.task_queues}
+
+    routed = {name: app.conf.task_routes.get(name, {}).get("queue") for name in task_names}
+
+    assert task_names
+    assert set(routed.values()) <= declared
 
 
-def test_exchange_supports_native_delayed_delivery() -> None:
-    assert app.conf.task_default_exchange_type == "topic"
+# Celery requires the default queue to be declared; it catches unrouted tasks.
+def test_unrouted_task_goes_to_default_queue() -> None:
+    route = app.amqp.router.route({}, "users.tasks.unrouted")
+
+    assert route["queue"].name == "default"
+
+
+def test_declared_queues_are_quorum_on_topic_exchanges() -> None:
+    for queue in app.amqp.queues.values():
+        assert queue.queue_arguments == {"x-queue-type": "quorum"}
+        assert queue.exchange.type == "topic"
+
+
+def test_every_queue_has_a_worker() -> None:
+    compose = (settings.BASE_DIR / "compose.yaml").read_text()
+    ci = (settings.BASE_DIR / ".github" / "workflows" / "ci.yml").read_text()
+    declared = {queue.name for queue in app.conf.task_queues}
+
+    compose_lists = re.findall(r'"worker", "-Q", "([^"]+)"', compose)
+    ci_lists = re.findall(r"worker -Q (\S+)", ci)
+
+    assert {name for names in compose_lists for name in names.split(",")} == declared
+    assert {name for names in ci_lists for name in names.split(",")} == declared
 
 
 def test_publish_waits_for_broker_confirm() -> None:

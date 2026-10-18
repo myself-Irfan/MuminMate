@@ -144,7 +144,7 @@ def test_signup_logged_with_new_user_id(
     assert (line["level"], line["user_id"]) == ("info", User.objects.get().pk)
 
 
-def test_signup_with_taken_email_logged_as_ignored(
+def test_signup_with_taken_email_logged_as_refused(
     client: Client, json_logs: io.StringIO, consumer_user: User, password: str
 ) -> None:
     client.post(
@@ -152,7 +152,7 @@ def test_signup_with_taken_email_logged_as_ignored(
         {"email": consumer_user.email, "password1": password, "password2": password},
     )
 
-    [line] = events(json_logs, "signup_ignored")
+    [line] = events(json_logs, "signup_refused")
     assert (line["level"], line["reason"], line["user_id"]) == (
         "info",
         "email_taken",

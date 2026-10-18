@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>MuminMate</title>
+</head>
+<body style="margin:0; padding:0; background-color:#faf7f0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#faf7f0;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px; background-color:#fffdf8; border:1px solid #e6dfcf; border-radius:6px;">
+          <tr>
+            <td style="padding:32px; font-family:Arial, Helvetica, sans-serif; font-size:16px; line-height:1.5; color:#26302e;">
+              <p style="margin:0; font-family:Georgia, 'Times New Roman', serif; font-size:22px; color:#0e5c4a;">MuminMate</p>
+              <p lang="ar" dir="rtl" style="margin:24px 0 0; font-size:24px; color:#8a6934;">السَّلَامُ عَلَيْكُمْ</p>
+              <p style="margin:4px 0 0; font-family:Georgia, 'Times New Roman', serif; font-size:16px; color:#8a6934;">Assalamu Alaikum</p>
+              <hr style="border:0; border-top:1px solid #a8834a; margin:24px 0;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+        </table>
+        <p style="margin:16px 0 0; font-family:Arial, Helvetica, sans-serif; font-size:12px; color:#686c64;">{% block footer %}{% endblock %}</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -1,10 +1,73 @@
 from http import HTTPStatus
+from unittest.mock import Mock
 
 import pytest
 import structlog
+from django.test import RequestFactory
+from django.urls import Resolver404
 
-from core.log_processors import drop_successful_probes, mask_sensitive, move_exception_to_exc_info
+from core.log_processors import (
+    drop_successful_probes,
+    mask_sensitive,
+    mask_url_tokens,
+    move_exception_to_exc_info,
+)
 from core.masking import DataMasker
+
+
+def test_url_token_left_alone_without_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    resolve = Mock()
+    monkeypatch.setattr("core.log_processors.resolve", resolve)
+    event = {"event": "task_started"}
+
+    assert mask_url_tokens(None, "info", dict(event)) == event
+    resolve.assert_not_called()
+
+
+def test_url_token_left_alone_when_path_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("core.log_processors.resolve", Mock(side_effect=Resolver404))
+    event = {"event": "request_started", "request": "GET /nope/abc123/"}
+
+    assert mask_url_tokens(None, "info", dict(event)) == event
+
+
+def test_url_token_left_alone_when_route_has_no_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "core.log_processors.resolve", Mock(return_value=Mock(kwargs={"uidb64": "MQ"}))
+    )
+    event = {"event": "request_started", "request": "GET /accounts/MQ/"}
+
+    assert mask_url_tokens(None, "info", dict(event)) == event
+
+
+def test_url_token_masked_in_event_and_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    resolve = Mock(return_value=Mock(kwargs={"token": "abc123"}))
+    monkeypatch.setattr("core.log_processors.resolve", resolve)
+    event = {"event": "Forbidden: /verify/MQ/abc123/", "request": "POST /verify/MQ/abc123/?next=/"}
+
+    masked = mask_url_tokens(None, "info", event)
+
+    assert (masked["event"], masked["request"]) == (
+        "Forbidden: /verify/MQ/*****/",
+        "POST /verify/MQ/*****/?next=/",
+    )
+    resolve.assert_called_once_with("/verify/MQ/abc123/")
+
+
+def test_url_token_path_read_from_stdlib_record(
+    monkeypatch: pytest.MonkeyPatch, rf: RequestFactory
+) -> None:
+    resolve = Mock(return_value=Mock(kwargs={"token": "abc123"}))
+    monkeypatch.setattr("core.log_processors.resolve", resolve)
+    event = {
+        "event": "Forbidden (CSRF cookie not set.): /verify/MQ/abc123/",
+        "_record": Mock(request=rf.post("/verify/MQ/abc123/")),
+    }
+
+    masked = mask_url_tokens(None, "warning", event)
+
+    assert masked["event"] == "Forbidden (CSRF cookie not set.): /verify/MQ/*****/"
+    resolve.assert_called_once_with("/verify/MQ/abc123/")
 
 
 def test_mask_sensitive_masks_fields_and_request_query() -> None:

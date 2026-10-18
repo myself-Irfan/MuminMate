@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth import SESSION_KEY
@@ -72,16 +73,32 @@ def test_signup_creates_user_and_redirects_to_done(
     assert User.objects.filter(email="new@example.com").exists()
 
 
-def test_signup_answers_taken_email_like_new_one(
+def test_signup_shows_error_when_email_taken(
     client: Client, consumer_user: User, signup_payload: dict[str, str]
 ) -> None:
     signup_payload["email"] = consumer_user.email.upper()
 
     response = client.post("/accounts/signup/", signup_payload)
 
-    assert response.status_code == HTTPStatus.FOUND
-    assert response["Location"] == "/accounts/signup/done/"
+    assertContains(response, "An account with this email already exists.")
+    assert response.context["form"].has_error("email", "email_taken")
     assert User.objects.count() == 1
+
+
+# The form's check passed, then another signup committed first.
+def test_signup_shows_error_when_parallel_signup_wins(
+    monkeypatch: pytest.MonkeyPatch,
+    client: Client,
+    consumer_user: User,
+    signup_payload: dict[str, str],
+) -> None:
+    monkeypatch.setattr("users.forms.UserService.get_id_by_email", Mock(return_value=None))
+    signup_payload["email"] = consumer_user.email
+
+    response = client.post("/accounts/signup/", signup_payload)
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].has_error("email", "email_taken")
 
 
 @pytest.mark.django_db

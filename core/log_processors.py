@@ -1,6 +1,8 @@
 from http import HTTPStatus
 
 import structlog
+from django.http import HttpRequest
+from django.urls import Resolver404, resolve
 from structlog.typing import EventDict, WrappedLogger
 
 from core.masking import DataMasker
@@ -14,6 +16,33 @@ def mask_sensitive(_logger: WrappedLogger, _method_name: str, event_dict: EventD
         event_dict["request"] = f"{target}?{masker.mask_query(query)}"
     masked: EventDict = masker.mask(event_dict)
     return masked
+
+
+# OWASP Logging: tokens in URL paths (verification, password reset), on every channel.
+def mask_url_tokens(_logger: WrappedLogger, _method_name: str, event_dict: EventDict) -> EventDict:
+    path = _logged_path(event_dict)
+    if path is None:
+        return event_dict
+    try:
+        token = resolve(path).kwargs.get("token")
+    except Resolver404:
+        return event_dict
+    if token:
+        for key in ("event", "request"):
+            if isinstance(event_dict.get(key), str):
+                event_dict[key] = event_dict[key].replace(token, "*****")
+    return event_dict
+
+
+# Django's log_response puts the request in the record; django-structlog logs "METHOD /path?query".
+def _logged_path(event_dict: EventDict) -> str | None:
+    request = getattr(event_dict.get("_record"), "request", None)
+    if isinstance(request, HttpRequest):
+        return request.path_info
+    logged = event_dict.get("request")
+    if isinstance(logged, str) and " " in logged:
+        return logged.split(" ", 1)[1].partition("?")[0]
+    return None
 
 
 # k8s polls these every few seconds: keep only failures.
