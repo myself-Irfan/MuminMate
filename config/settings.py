@@ -29,6 +29,8 @@ SESSION_COOKIE_NAME = "__Host-sessionid" if env.django_https else "sessionid"
 CSRF_COOKIE_NAME = "__Host-csrftoken" if env.django_https else "csrftoken"
 SESSION_COOKIE_AGE = int(timedelta(minutes=env.django_session_idle_minutes).total_seconds())
 SESSION_ABSOLUTE_AGE = int(timedelta(hours=env.django_session_absolute_hours).total_seconds())
+# Each request saves the session, which restarts the idle timeout.
+SESSION_SAVE_EVERY_REQUEST = True
 SECURE_HSTS_SECONDS = env.django_hsts_seconds
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.django_hsts_seconds > 0
 # HSTS preload is near-irreversible and needs a real domain; revisit at release.
@@ -47,7 +49,6 @@ INSTALLED_APPS = [
     "django_structlog",
     "core",
     "users",
-    "web",
 ]
 
 MIDDLEWARE = [

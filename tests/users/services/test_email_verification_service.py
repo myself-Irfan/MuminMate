@@ -1,16 +1,13 @@
 import io
-import re
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
-from django.core import mail
-from django.core.mail import EmailMultiAlternatives
-from django.test import Client
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from pytest_django import Settings
+from kombu.exceptions import OperationalError
+from pytest_django import DjangoCaptureOnCommitCallbacks, Settings
 
 from tests.logging_support import events
 from users.exceptions import InvalidVerificationLinkError
@@ -30,55 +27,48 @@ def token(consumer_user: User) -> str:
 
 
 @pytest.fixture
-def public_url(settings: Settings) -> str:
-    url = "https://muminmate.example"
-    settings.PUBLIC_URL = url
-    return url
+def signup_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr("users.services.email_verification_service.send_signup_email.delay", delay)
+    return delay
 
 
-def test_signup_email_sends_verify_link(consumer_user: User, public_url: str) -> None:
-    EmailVerificationService().send_signup_email(consumer_user.pk)
-
-    [sent] = mail.outbox
-    assert isinstance(sent, EmailMultiAlternatives)
-    assert sent.to == [consumer_user.email]
-    assert sent.subject == "Confirm your email for MuminMate"
-    [link] = re.findall(rf"{re.escape(public_url)}/accounts/verify/[\w-]+/[\w-]+/", str(sent.body))
-    [(html, _)] = sent.alternatives
-    assert isinstance(html, str)
-    assert link in html
-
-
-def test_signup_email_link_verifies_user(
-    client: Client, consumer_user: User, public_url: str
+def test_request_verification_queues_email_only_after_commit(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    signup_email_delay: Mock,
+    consumer_user: User,
 ) -> None:
-    EmailVerificationService().send_signup_email(consumer_user.pk)
-    [path] = re.findall(
-        rf"{re.escape(public_url)}(/accounts/verify/[\w-]+/[\w-]+/)", str(mail.outbox[0].body)
-    )
+    with django_capture_on_commit_callbacks() as callbacks:
+        EmailVerificationService().request_verification(consumer_user.pk)
 
-    client.post(path)
-
-    consumer_user.refresh_from_db()
-    assert consumer_user.is_email_verified
+    assert len(callbacks) == 1
+    signup_email_delay.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("timeout_seconds", "expiry"), [(259_200, "3\xa0days"), (600, "10\xa0minutes")]
-)
-def test_signup_email_states_link_expiry(
-    settings: Settings, consumer_user: User, timeout_seconds: int, expiry: str
+def test_request_verification_queues_email_for_user(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    signup_email_delay: Mock,
+    consumer_user: User,
 ) -> None:
-    settings.PASSWORD_RESET_TIMEOUT = timeout_seconds
+    with django_capture_on_commit_callbacks(execute=True):
+        EmailVerificationService().request_verification(consumer_user.pk)
 
-    EmailVerificationService().send_signup_email(consumer_user.pk)
+    signup_email_delay.assert_called_once_with(consumer_user.pk)
 
-    [sent] = mail.outbox
-    assert isinstance(sent, EmailMultiAlternatives)
-    [(html, _)] = sent.alternatives
-    assert isinstance(html, str)
-    assert f"expires in {expiry}" in sent.body
-    assert f"expires in {expiry}" in html
+
+def test_request_verification_logs_when_email_cannot_be_queued(
+    json_logs: io.StringIO,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    signup_email_delay: Mock,
+    consumer_user: User,
+) -> None:
+    signup_email_delay.side_effect = OperationalError("broker unreachable")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        EmailVerificationService().request_verification(consumer_user.pk)
+
+    [line] = events(json_logs, "signup_email_queue_failed")
+    assert (line["level"], line["user_id"]) == ("error", consumer_user.pk)
 
 
 def test_is_link_valid_when_token_matches(consumer_user: User, uidb64: str, token: str) -> None:
@@ -193,28 +183,6 @@ def test_verify_raises_when_user_unknown(token: str) -> None:
 
     with pytest.raises(InvalidVerificationLinkError):
         EmailVerificationService().verify(uidb64=unknown_uidb64, token=token)
-
-
-def test_signup_email_skipped_when_user_inactive(
-    json_logs: io.StringIO, consumer_user: User
-) -> None:
-    consumer_user.is_active = False
-    consumer_user.save()
-
-    EmailVerificationService().send_signup_email(consumer_user.pk)
-
-    assert mail.outbox == []
-    [line] = events(json_logs, "signup_email_skipped")
-    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
-
-
-@pytest.mark.django_db
-def test_signup_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
-    EmailVerificationService().send_signup_email(999_999)
-
-    assert mail.outbox == []
-    [line] = events(json_logs, "signup_email_skipped")
-    assert line["user_id"] == 999_999
 
 
 def test_is_link_valid_false_when_user_inactive(

@@ -19,8 +19,8 @@ type EmailTaskCase = tuple[Task[[int], None], str]
 
 @pytest.fixture(
     params=[
-        (send_signup_email, "users.tasks.EmailVerificationService.send_signup_email"),
-        (send_password_reset_email, "users.tasks.PasswordResetService.send_reset_email"),
+        (send_signup_email, "users.tasks.EmailService.send_signup_email"),
+        (send_password_reset_email, "users.tasks.EmailService.send_password_reset_email"),
     ],
     ids=["signup", "password_reset"],
 )

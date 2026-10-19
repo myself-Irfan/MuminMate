@@ -125,7 +125,8 @@ def test_failed_verify_request_logs_no_token(
     monkeypatch: pytest.MonkeyPatch, json_logs: io.StringIO, verify_path: str
 ) -> None:
     monkeypatch.setattr(
-        "users.views.EmailVerificationService.is_link_valid", Mock(side_effect=RuntimeError)
+        "users.views.email_verification_view.EmailVerificationService.is_link_valid",
+        Mock(side_effect=RuntimeError),
     )
     token = verify_path.rstrip("/").rsplit("/", 1)[1]
 

@@ -38,7 +38,7 @@ def test_signup_email_retried_through_broker_after_failure(
     monkeypatch: pytest.MonkeyPatch, password: str
 ) -> None:
     send = Mock(side_effect=[ConnectionRefusedError(), None])
-    monkeypatch.setattr("users.services.email_verification_service.EmailService.send", send)
+    monkeypatch.setattr("users.services.email_service.EmailMultiAlternatives.send", send)
     monkeypatch.setattr(
         "celery.app.autoretry.get_exponential_backoff_interval", Mock(return_value=1)
     )

@@ -13,7 +13,7 @@ from users.models import User
 def request_password_reset(monkeypatch: pytest.MonkeyPatch) -> Mock:
     request_reset = Mock()
     monkeypatch.setattr(
-        "users.forms.password_reset_form.UserService.request_password_reset", request_reset
+        "users.forms.password_reset_form.PasswordResetService.request_reset", request_reset
     )
     return request_reset
 

@@ -78,14 +78,6 @@ class Env(BaseSettings):
     def parse_allowed_hosts(cls, value: str) -> list[str]:
         return [host.strip() for host in value.split(",") if host.strip()]
 
-    # Parsing adds the "/" path, so a trailing slash is only visible before it.
-    @field_validator("django_public_url", mode="before")
-    @classmethod
-    def check_public_url_has_no_trailing_slash(cls, value: str) -> str:
-        if value.endswith("/"):
-            raise ValueError("must not end with /")
-        return value
-
     @field_validator("django_public_url")
     @classmethod
     def check_public_url_is_origin(cls, url: HttpUrl) -> HttpUrl:

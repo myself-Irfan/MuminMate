@@ -60,7 +60,7 @@ testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers", "-ra"]
 
 [tool.coverage.run]
-source = ["config", "core", "users", "web"]
+source = ["config", "core", "users"]
 omit = ["*/migrations/*", "config/asgi.py", "config/wsgi.py"]
 
 [tool.coverage.report]
