@@ -1,11 +1,12 @@
 import ipaddress
 
-from django.contrib.auth import get_user_model
 from django.utils.crypto import salted_hmac
+
+from users.models import User
 
 
 def digest_email(email: str) -> str:
-    normalized = get_user_model().objects.normalize_email(email)
+    normalized = User.objects.normalize_email(email)
     return salted_hmac("users.login_failure", normalized, algorithm="sha256").hexdigest()
 
 

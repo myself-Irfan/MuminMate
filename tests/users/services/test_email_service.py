@@ -1,47 +1,182 @@
-from pathlib import Path
+import io
+import re
 from smtplib import SMTPRecipientsRefused
 from unittest.mock import Mock
 
 import pytest
+from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
 from django.core.mail import EmailMultiAlternatives
-from django.template import TemplateDoesNotExist
+from django.test import Client
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from pytest_django import Settings
 
+from tests.logging_support import events
 from users.models import User
 from users.services.email_service import EmailService
 
 
 @pytest.fixture
-def mail_templates(settings: Settings, tmp_path: Path) -> None:
-    (tmp_path / "test_emails").mkdir()
-    (tmp_path / "test_emails" / "hello.txt").write_text("Hello {{ name }}")
-    (tmp_path / "test_emails" / "hello.html").write_text("<p>Hello {{ name }}</p>")
-    engine = settings.TEMPLATES[0]
-    settings.TEMPLATES = [{**engine, "DIRS": [tmp_path, *engine["DIRS"]]}]
+def public_url(settings: Settings) -> str:
+    url = "https://muminmate.example"
+    settings.PUBLIC_URL = url
+    return url
 
 
-@pytest.mark.usefixtures("mail_templates")
-def test_send_mails_user_text_and_html(settings: Settings, consumer_user: User) -> None:
+def test_signup_email_sends_verify_link(
+    settings: Settings, consumer_user: User, public_url: str
+) -> None:
     settings.DEFAULT_FROM_EMAIL = "MuminMate <no-reply@example.com>"
 
-    EmailService().send(
-        user=consumer_user,
-        subject="Greetings",
-        template_name="test_emails/hello",
-        context={"name": "Ali"},
-    )
+    EmailService().send_signup_email(consumer_user.pk)
 
     [sent] = mail.outbox
     assert isinstance(sent, EmailMultiAlternatives)
     assert sent.to == [consumer_user.email]
     assert sent.from_email == "MuminMate <no-reply@example.com>"
-    assert sent.subject == "Greetings"
-    assert sent.body == "Hello Ali"
-    assert sent.alternatives == [("<p>Hello Ali</p>", "text/html")]
+    assert sent.subject == "Confirm your email for MuminMate"
+    [link] = re.findall(rf"{re.escape(public_url)}/accounts/verify/[\w-]+/[\w-]+/", str(sent.body))
+    [(html, mimetype)] = sent.alternatives
+    assert isinstance(html, str)
+    assert link in html
+    assert mimetype == "text/html"
 
 
-@pytest.mark.usefixtures("mail_templates")
+def test_signup_email_link_verifies_user(
+    client: Client, consumer_user: User, public_url: str
+) -> None:
+    EmailService().send_signup_email(consumer_user.pk)
+    [path] = re.findall(
+        rf"{re.escape(public_url)}(/accounts/verify/[\w-]+/[\w-]+/)", str(mail.outbox[0].body)
+    )
+
+    client.post(path)
+
+    consumer_user.refresh_from_db()
+    assert consumer_user.is_email_verified
+
+
+@pytest.mark.parametrize(
+    ("timeout_seconds", "expiry"), [(259_200, "3\xa0days"), (600, "10\xa0minutes")]
+)
+def test_signup_email_states_link_expiry(
+    settings: Settings, consumer_user: User, timeout_seconds: int, expiry: str
+) -> None:
+    settings.PASSWORD_RESET_TIMEOUT = timeout_seconds
+
+    EmailService().send_signup_email(consumer_user.pk)
+
+    [sent] = mail.outbox
+    assert isinstance(sent, EmailMultiAlternatives)
+    [(html, _)] = sent.alternatives
+    assert isinstance(html, str)
+    assert f"expires in {expiry}" in sent.body
+    assert f"expires in {expiry}" in html
+
+
+def test_signup_email_skipped_when_user_inactive(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    consumer_user.is_active = False
+    consumer_user.save()
+
+    EmailService().send_signup_email(consumer_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "signup_email_skipped")
+    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
+
+
+@pytest.mark.django_db
+def test_signup_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_signup_email(999_999)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "signup_email_skipped")
+    assert line["user_id"] == 999_999
+
+
+def test_password_reset_email_sends_reset_link(consumer_user: User, public_url: str) -> None:
+    EmailService().send_password_reset_email(consumer_user.pk)
+
+    [sent] = mail.outbox
+    assert isinstance(sent, EmailMultiAlternatives)
+    assert sent.to == [consumer_user.email]
+    assert sent.subject == "Reset your MuminMate password"
+    [link] = re.findall(
+        rf"{re.escape(public_url)}/accounts/password-reset/[\w-]+/[\w-]+/", str(sent.body)
+    )
+    [(html, _)] = sent.alternatives
+    assert isinstance(html, str)
+    assert link in html
+
+
+def test_password_reset_email_token_valid_for_user(consumer_user: User, public_url: str) -> None:
+    EmailService().send_password_reset_email(consumer_user.pk)
+    [(uidb64, token)] = re.findall(
+        r"/accounts/password-reset/([\w-]+)/([\w-]+)/", str(mail.outbox[0].body)
+    )
+
+    assert force_str(urlsafe_base64_decode(uidb64)) == str(consumer_user.pk)
+    assert default_token_generator.check_token(consumer_user, token)
+
+
+def test_password_reset_email_states_link_expiry(settings: Settings, consumer_user: User) -> None:
+    settings.PASSWORD_RESET_TIMEOUT = 600
+
+    EmailService().send_password_reset_email(consumer_user.pk)
+
+    [sent] = mail.outbox
+    assert "expires in 10\xa0minutes" in sent.body
+
+
+def test_password_reset_email_skipped_when_user_inactive(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    consumer_user.is_active = False
+    consumer_user.save()
+
+    EmailService().send_password_reset_email(consumer_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "password_reset_email_skipped")
+    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
+
+
+def test_password_reset_email_skipped_when_password_unusable(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    consumer_user.set_unusable_password()
+    consumer_user.save()
+
+    EmailService().send_password_reset_email(consumer_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "password_reset_email_skipped")
+    assert line["user_id"] == consumer_user.pk
+
+
+def test_password_reset_email_skipped_when_user_privileged(
+    json_logs: io.StringIO, staff_user: User
+) -> None:
+    EmailService().send_password_reset_email(staff_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "password_reset_email_skipped")
+    assert line["user_id"] == staff_user.pk
+
+
+@pytest.mark.django_db
+def test_password_reset_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_password_reset_email(999_999)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "password_reset_email_skipped")
+    assert line["user_id"] == 999_999
+
+
+# The task retries on OSError: a failed send must reach it.
 @pytest.mark.parametrize(
     "error",
     [
@@ -51,26 +186,10 @@ def test_send_mails_user_text_and_html(settings: Settings, consumer_user: User) 
     ],
     ids=["refused", "server_down", "timeout"],
 )
-def test_send_raises_when_mail_server_fails(
+def test_email_raises_when_mail_server_fails(
     monkeypatch: pytest.MonkeyPatch, consumer_user: User, error: OSError
 ) -> None:
     monkeypatch.setattr(EmailMultiAlternatives, "send", Mock(side_effect=error))
 
     with pytest.raises(type(error)):
-        EmailService().send(
-            user=consumer_user,
-            subject="Greetings",
-            template_name="test_emails/hello",
-            context={"name": "Ali"},
-        )
-
-
-@pytest.mark.usefixtures("mail_templates")
-def test_send_raises_when_template_missing(consumer_user: User) -> None:
-    with pytest.raises(TemplateDoesNotExist):
-        EmailService().send(
-            user=consumer_user,
-            subject="Greetings",
-            template_name="test_emails/missing",
-            context={},
-        )
+        EmailService().send_signup_email(consumer_user.pk)

@@ -3,8 +3,7 @@ from smtplib import SMTPAuthenticationError, SMTPRecipientsRefused, SMTPSenderRe
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 
-from users.services.email_verification_service import EmailVerificationService
-from users.services.password_reset_service import PasswordResetService
+from users.services.email_service import EmailService
 
 
 # Retried with full jitter: 0-1, 0-2, 0-4, 0-8, 0-10 min.
@@ -18,7 +17,7 @@ from users.services.password_reset_service import PasswordResetService
     time_limit=60,
 )
 def send_signup_email(user_id: int) -> None:
-    EmailVerificationService().send_signup_email(user_id)
+    EmailService().send_signup_email(user_id)
 
 
 @shared_task(
@@ -31,4 +30,4 @@ def send_signup_email(user_id: int) -> None:
     time_limit=60,
 )
 def send_password_reset_email(user_id: int) -> None:
-    PasswordResetService().send_reset_email(user_id)
+    EmailService().send_password_reset_email(user_id)

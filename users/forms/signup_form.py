@@ -1,31 +1,16 @@
-from typing import Any
+from typing import ClassVar
 
-import django_stubs_ext
 import structlog
 from django import forms
 from django.contrib.auth import forms as auth_forms
-from django.core.exceptions import ValidationError
 
 from users.models import User
 from users.services.user_service import UserService
-from users.validators import validate_email_is_ascii
 
 logger = structlog.get_logger(__name__)
 
 
-# Lets SetPasswordMixin[User] run; built into Django 6.0 (d0c8f89), delete on upgrade.
-django_stubs_ext.monkeypatch(extra_classes=[auth_forms.SetPasswordMixin])
-
-
-class SignupForm(auth_forms.SetPasswordMixin[User], forms.Form):
-    email = forms.EmailField(
-        max_length=User._meta.get_field("email").max_length,
-        validators=[validate_email_is_ascii],
-        widget=forms.EmailInput(attrs={"autocomplete": "email", "autofocus": True}),
-        error_messages={
-            "email_taken": "An account with this email already exists. Log in instead."
-        },
-    )
+class SignupForm(auth_forms.BaseUserCreationForm[User]):
     password1, password2 = auth_forms.SetPasswordMixin.create_password_fields(
         label2="Confirm password"
     )
@@ -35,18 +20,18 @@ class SignupForm(auth_forms.SetPasswordMixin[User], forms.Form):
     )
     password2.help_text = ""
 
-    def clean_email(self) -> str:
-        email: str = self.cleaned_data["email"]
-        user_id = UserService().get_id_by_email(email)
-        if user_id is not None:
-            logger.info("signup_refused", reason="email_taken", user_id=user_id)
-            raise ValidationError(
-                self.fields["email"].error_messages["email_taken"], code="email_taken"
-            )
-        return email
+    class Meta:
+        model = User
+        fields = ("email",)
+        widgets: ClassVar[dict[str, forms.Widget]] = {
+            "email": forms.EmailInput(attrs={"autocomplete": "email"})
+        }
+        error_messages: ClassVar[dict[str, dict[str, str]]] = {
+            "email": {"unique": "An account with this email already exists. Log in instead."}
+        }
 
-    def clean(self) -> dict[str, Any] | None:
-        cleaned_data = super().clean()
-        self.validate_passwords()
-        self.validate_password_for_user(User(email=self.cleaned_data.get("email", "")))
-        return cleaned_data
+    def validate_unique(self) -> None:
+        super().validate_unique()
+        if self.has_error("email", "unique"):
+            user_id = UserService().get_id_by_email(self.instance.email)
+            logger.info("signup_refused", reason="email_taken", user_id=user_id)

@@ -1,36 +1,23 @@
+from functools import partial
+
 import structlog
-from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.urls import reverse
+from django.db import transaction
 from django.utils import timezone
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.http import urlsafe_base64_decode
+from kombu.exceptions import OperationalError
 
 from users.exceptions import InvalidVerificationLinkError
 from users.models import User
-from users.services.email_service import EmailService
-from users.tokens import EmailVerificationTokenGenerator, describe_token_lifetime
+from users.tasks import send_signup_email
+from users.tokens import EmailVerificationTokenGenerator
 
 logger = structlog.get_logger(__name__)
 
 
 class EmailVerificationService:
-    def send_signup_email(self, user_id: int) -> None:
-        try:
-            user = User.objects.get(pk=user_id, is_active=True)
-        except User.DoesNotExist:
-            # Deactivated, or deleted since signup: nothing to tell them.
-            logger.info("signup_email_skipped", user_id=user_id)
-            return
-        EmailService().send(
-            user=user,
-            subject="Confirm your email for MuminMate",
-            template_name="users/emails/verify_email",
-            context={
-                "verify_url": self._build_verify_url(user),
-                "expiry": describe_token_lifetime(),
-            },
-        )
+    def request_verification(self, user_id: int) -> None:
+        transaction.on_commit(partial(self._queue_signup_email, user_id))
 
     def is_link_valid(self, *, uidb64: str, token: str) -> bool:
         return self._get_user_by_link(uidb64, token) is not None
@@ -51,11 +38,12 @@ class EmailVerificationService:
             logger.info("email_verified", user_id=user.pk)
         return bool(updated)
 
-    def _build_verify_url(self, user: User) -> str:
-        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-        token = EmailVerificationTokenGenerator().make_token(user)
-        path = reverse("verify_email", kwargs={"uidb64": uidb64, "token": token})
-        return f"{settings.PUBLIC_URL}{path}"
+    # A broker outage mustn't fail the request, as with Django's own password reset send_mail.
+    def _queue_signup_email(self, user_id: int) -> None:
+        try:
+            send_signup_email.delay(user_id)
+        except OperationalError:
+            logger.exception("signup_email_queue_failed", user_id=user_id)
 
     def _get_user_by_link(self, uidb64: str, token: str) -> User | None:
         user = self._get_user(uidb64)

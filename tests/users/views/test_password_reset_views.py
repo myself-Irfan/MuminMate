@@ -18,7 +18,7 @@ from users.tasks import send_password_reset_email
 @pytest.fixture(autouse=True)
 def send_reset_email_inline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "users.services.user_service.send_password_reset_email.delay",
+        "users.services.password_reset_service.send_password_reset_email.delay",
         Mock(side_effect=send_password_reset_email),
     )
 

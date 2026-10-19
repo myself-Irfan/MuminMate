@@ -288,7 +288,9 @@ def test_env_fails_when_logging_key_missing(
 
 
 @pytest.mark.usefixtures("env_vars")
-@pytest.mark.parametrize("url", ["https://muminmate.example", "http://localhost:8000"])
+@pytest.mark.parametrize(
+    "url", ["https://muminmate.example", "https://muminmate.example/", "http://localhost:8000"]
+)
 def test_public_url_parsed_when_origin(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
     monkeypatch.setenv("DJANGO_PUBLIC_URL", url)
 
@@ -303,7 +305,6 @@ def test_public_url_parsed_when_origin(monkeypatch: pytest.MonkeyPatch, url: str
     [
         "muminmate.example",
         "ftp://muminmate.example",
-        "https://muminmate.example/",
         "https://muminmate.example/app",
         "https://muminmate.example?next=home",
         "https://muminmate.example#top",

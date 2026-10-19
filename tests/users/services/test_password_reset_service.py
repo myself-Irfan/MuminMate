@@ -1,13 +1,9 @@
 import io
-import re
+from unittest.mock import Mock
 
 import pytest
-from django.contrib.auth.tokens import default_token_generator
-from django.core import mail
-from django.core.mail import EmailMultiAlternatives
-from django.utils.encoding import force_str
-from django.utils.http import urlsafe_base64_decode
-from pytest_django import Settings
+from kombu.exceptions import OperationalError
+from pytest_django import DjangoCaptureOnCommitCallbacks
 
 from tests.logging_support import events
 from users.models import LoginFailure, User
@@ -16,87 +12,59 @@ from users.services.password_reset_service import PasswordResetService
 
 
 @pytest.fixture
-def public_url(settings: Settings) -> str:
-    url = "https://muminmate.example"
-    settings.PUBLIC_URL = url
-    return url
-
-
-def test_reset_email_sends_reset_link(consumer_user: User, public_url: str) -> None:
-    PasswordResetService().send_reset_email(consumer_user.pk)
-
-    [sent] = mail.outbox
-    assert isinstance(sent, EmailMultiAlternatives)
-    assert sent.to == [consumer_user.email]
-    assert sent.subject == "Reset your MuminMate password"
-    [link] = re.findall(
-        rf"{re.escape(public_url)}/accounts/password-reset/[\w-]+/[\w-]+/", str(sent.body)
+def password_reset_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr(
+        "users.services.password_reset_service.send_password_reset_email.delay", delay
     )
-    [(html, _)] = sent.alternatives
-    assert isinstance(html, str)
-    assert link in html
+    return delay
 
 
-def test_reset_email_token_valid_for_user(consumer_user: User, public_url: str) -> None:
-    PasswordResetService().send_reset_email(consumer_user.pk)
-    [(uidb64, token)] = re.findall(
-        r"/accounts/password-reset/([\w-]+)/([\w-]+)/", str(mail.outbox[0].body)
-    )
-
-    assert force_str(urlsafe_base64_decode(uidb64)) == str(consumer_user.pk)
-    assert default_token_generator.check_token(consumer_user, token)
-
-
-def test_reset_email_states_link_expiry(settings: Settings, consumer_user: User) -> None:
-    settings.PASSWORD_RESET_TIMEOUT = 600
-
-    PasswordResetService().send_reset_email(consumer_user.pk)
-
-    [sent] = mail.outbox
-    assert "expires in 10\xa0minutes" in sent.body
-
-
-def test_reset_email_skipped_when_user_inactive(
-    json_logs: io.StringIO, consumer_user: User
+def test_request_reset_queues_email_only_after_commit(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    password_reset_email_delay: Mock,
+    consumer_user: User,
 ) -> None:
-    consumer_user.is_active = False
-    consumer_user.save()
+    with django_capture_on_commit_callbacks() as callbacks:
+        PasswordResetService().request_reset(consumer_user.pk)
 
-    PasswordResetService().send_reset_email(consumer_user.pk)
+    assert len(callbacks) == 1
+    password_reset_email_delay.assert_not_called()
 
-    assert mail.outbox == []
-    [line] = events(json_logs, "password_reset_email_skipped")
+
+def test_request_reset_queues_email_for_user(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    password_reset_email_delay: Mock,
+    consumer_user: User,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        PasswordResetService().request_reset(consumer_user.pk)
+
+    password_reset_email_delay.assert_called_once_with(consumer_user.pk)
+
+
+def test_request_reset_logs_requested(
+    json_logs: io.StringIO, password_reset_email_delay: Mock, consumer_user: User
+) -> None:
+    PasswordResetService().request_reset(consumer_user.pk)
+
+    [line] = events(json_logs, "password_reset_requested")
     assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
 
 
-def test_reset_email_skipped_when_password_unusable(
-    json_logs: io.StringIO, consumer_user: User
+def test_request_reset_logs_when_email_cannot_be_queued(
+    json_logs: io.StringIO,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    password_reset_email_delay: Mock,
+    consumer_user: User,
 ) -> None:
-    consumer_user.set_unusable_password()
-    consumer_user.save()
+    password_reset_email_delay.side_effect = OperationalError("broker unreachable")
 
-    PasswordResetService().send_reset_email(consumer_user.pk)
+    with django_capture_on_commit_callbacks(execute=True):
+        PasswordResetService().request_reset(consumer_user.pk)
 
-    assert mail.outbox == []
-    [line] = events(json_logs, "password_reset_email_skipped")
-    assert line["user_id"] == consumer_user.pk
-
-
-def test_reset_email_skipped_when_user_privileged(json_logs: io.StringIO, staff_user: User) -> None:
-    PasswordResetService().send_reset_email(staff_user.pk)
-
-    assert mail.outbox == []
-    [line] = events(json_logs, "password_reset_email_skipped")
-    assert line["user_id"] == staff_user.pk
-
-
-@pytest.mark.django_db
-def test_reset_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
-    PasswordResetService().send_reset_email(999_999)
-
-    assert mail.outbox == []
-    [line] = events(json_logs, "password_reset_email_skipped")
-    assert line["user_id"] == 999_999
+    [line] = events(json_logs, "password_reset_email_queue_failed")
+    assert (line["level"], line["user_id"]) == ("error", consumer_user.pk)
 
 
 def test_complete_reset_verifies_email(consumer_user: User) -> None:

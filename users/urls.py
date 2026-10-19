@@ -1,16 +1,14 @@
 from django.urls import path
 
-from users.views import (
-    ConsumerLoginView,
-    ConsumerLogoutView,
+from users.views.authentication_views import ConsumerLoginView, ConsumerLogoutView
+from users.views.email_verification_view import VerifyEmailView
+from users.views.password_reset_views import (
     ConsumerPasswordResetCompleteView,
     ConsumerPasswordResetConfirmView,
     ConsumerPasswordResetDoneView,
     ConsumerPasswordResetView,
-    SignupDoneView,
-    SignupView,
-    VerifyEmailView,
 )
+from users.views.signup_views import SignupDoneView, SignupView
 
 urlpatterns = [
     path("login/", ConsumerLoginView.as_view(), name=ConsumerLoginView.url_name),

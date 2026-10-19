@@ -5,7 +5,7 @@ import structlog
 from django.contrib.auth import forms as auth_forms
 
 from users.models import User
-from users.services.user_service import UserService
+from users.services.password_reset_service import PasswordResetService
 
 logger = structlog.get_logger(__name__)
 
@@ -34,4 +34,4 @@ class ConsumerPasswordResetForm(auth_forms.PasswordResetForm):
         to_email: str,
         html_email_template_name: str | None = None,
     ) -> None:
-        UserService().request_password_reset(context["user"].pk)
+        PasswordResetService().request_reset(context["user"].pk)

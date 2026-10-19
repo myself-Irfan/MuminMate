@@ -12,7 +12,6 @@ from pytest_django import Settings
 
 from tests.logging_support import events, json_lines
 from users.enums import SessionKey
-from users.middleware import SessionTimeoutMiddleware
 from users.models import User
 
 
@@ -42,55 +41,17 @@ def test_login_resets_login_at_when_logging_in_again(
     assert client.session[SessionKey.LOGIN_AT] == 1_000_100
 
 
-def test_request_skips_session_save_within_refresh_interval(
-    client: Client, admin_user: User, clock: Mock, settings: Settings
-) -> None:
-    client.force_login(admin_user)
-    clock.return_value = 1_000_000 + SessionTimeoutMiddleware.refresh_interval_seconds - 1
-
-    response = client.get("/admin/")
-
-    assert response.status_code == HTTPStatus.OK
-    assert settings.SESSION_COOKIE_NAME not in response.cookies
-
-
-def test_request_refreshes_session_after_refresh_interval(
-    client: Client, admin_user: User, clock: Mock, settings: Settings
-) -> None:
-    refreshed_at = 1_000_000 + SessionTimeoutMiddleware.refresh_interval_seconds
-    client.force_login(admin_user)
-    clock.return_value = refreshed_at
-
-    response = client.get("/admin/")
-
-    assert response.status_code == HTTPStatus.OK
-    assert settings.SESSION_COOKIE_NAME in response.cookies
-    assert client.session[SessionKey.REFRESHED_AT] == refreshed_at
-
-
-def test_request_refresh_extends_session_expiry(
+def test_every_request_extends_session_expiry(
     client: Client, admin_user: User, clock: Mock
 ) -> None:
     client.force_login(admin_user)
     session_key = client.session.session_key
     expiry_before = Session.objects.get(pk=session_key).expire_date
-    clock.return_value = 1_000_000 + SessionTimeoutMiddleware.refresh_interval_seconds
+    clock.return_value = 1_000_001.0
 
     client.get("/admin/")
 
     assert Session.objects.get(pk=session_key).expire_date > expiry_before
-
-
-def test_request_refreshes_at_half_idle_when_idle_shorter_than_interval(
-    client: Client, admin_user: User, clock: Mock, settings: Settings
-) -> None:
-    settings.SESSION_COOKIE_AGE = 60
-    client.force_login(admin_user)
-    clock.return_value = 1_000_030.0
-
-    client.get("/admin/")
-
-    assert client.session[SessionKey.REFRESHED_AT] == 1_000_030
 
 
 def test_request_is_anonymous_when_session_expired(

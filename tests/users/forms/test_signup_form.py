@@ -20,7 +20,7 @@ def test_signup_form_fails_when_email_taken(consumer_user: User, password: str) 
     form = signup_form(f" {consumer_user.email.upper()} ", password)
 
     assert not form.is_valid()
-    assert form.has_error("email", "email_taken")
+    assert form.has_error("email", "unique")
 
 
 @pytest.mark.django_db

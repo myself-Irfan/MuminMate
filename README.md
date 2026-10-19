@@ -32,7 +32,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_SECRET_KEY` | Signing key. Generate with the command in `.env.example` |
 | `DJANGO_DEBUG` | `true` only for local development |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames the app serves |
-| `DJANGO_PUBLIC_URL` | How users reach the site, `scheme://host[:port]` without a trailing slash; links in mail start here |
+| `DJANGO_PUBLIC_URL` | How users reach the site, `scheme://host[:port]`; links in mail start here |
 | `DJANGO_HTTPS` | `true` only when served over HTTPS (redirect + secure cookies) |
 | `DJANGO_HSTS_SECONDS` | HSTS max-age; `0` locally, start production at `3600` |
 | `DJANGO_SESSION_IDLE_MINUTES` | Log out after this long without a request (`180`) |
@@ -136,8 +136,8 @@ requests aren't rate-limited yet (1.9b).
 
 Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE_MINUTES` without a
 request, and `DJANGO_SESSION_ABSOLUTE_HOURS` after login even if active (logging in again restarts
-it). Activity refreshes the session at most every 5 minutes, so it can end up to 5 minutes before the
-idle limit. With `DJANGO_HTTPS=true` the cookies are named `__Host-sessionid` and `__Host-csrftoken`.
+it). Every request saves the session, which restarts the idle timer. With `DJANGO_HTTPS=true` the
+cookies are named `__Host-sessionid` and `__Host-csrftoken`.
 
 ## Login limits
 
@@ -347,8 +347,7 @@ config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
 users/     custom user model (email login, no username), manager, admin, signup, email verification,
            password reset, login/logout, session timeouts, login throttling, auth event logging
-web/       server-rendered pages (home)
-templates/ shared layout (base.html)
+templates/ shared layout (base.html), partials, email layouts and the home page
 static/    CSS, fonts, logos (self-hosted, with licences)
 tests/     mirrors the source tree
 load-tests/ k6 load tests

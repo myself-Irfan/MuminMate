@@ -1,5 +1,5 @@
 from django.test import Client
-from pytest_django.asserts import assertContains
+from pytest_django.asserts import assertContains, assertTemplateUsed
 
 from users.models import User
 
@@ -11,6 +11,14 @@ def test_home_shows_email_and_logout_when_logged_in(client: Client, consumer_use
 
     assertContains(response, consumer_user.email)
     assertContains(response, 'action="/accounts/logout/"')
+
+
+def test_home_renders_project_template(client: Client, consumer_user: User) -> None:
+    client.force_login(consumer_user)
+
+    response = client.get("/")
+
+    assertTemplateUsed(response, "home.html")
 
 
 def test_home_loads_pico_and_theme_stylesheets(client: Client, consumer_user: User) -> None:
