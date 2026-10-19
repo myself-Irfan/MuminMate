@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 from django.db import IntegrityError
+from kombu.exceptions import OperationalError
 from pytest_django import DjangoCaptureOnCommitCallbacks
 
 from tests.logging_support import events
@@ -125,3 +126,82 @@ def test_signup_queues_no_email_when_email_taken(
 def test_signup_raises_when_other_constraint_fails(password: str) -> None:
     with pytest.raises(IntegrityError, match="users_email_ascii"):
         UserService().signup(email="\u0131rfan@example.com", password=password)
+
+
+@pytest.mark.django_db
+def test_signup_logs_when_email_cannot_be_queued(
+    monkeypatch: pytest.MonkeyPatch,
+    json_logs: io.StringIO,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    password: str,
+) -> None:
+    monkeypatch.setattr(
+        "users.services.user_service.send_signup_email.delay",
+        Mock(side_effect=OperationalError("broker unreachable")),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        UserService().signup(email="new@example.com", password=password)
+
+    [line] = events(json_logs, "signup_email_queue_failed")
+    assert (line["level"], line["user_id"]) == (
+        "error",
+        User.objects.get(email="new@example.com").pk,
+    )
+
+
+@pytest.fixture
+def password_reset_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr("users.services.user_service.send_password_reset_email.delay", delay)
+    return delay
+
+
+def test_request_password_reset_queues_email_only_after_commit(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    password_reset_email_delay: Mock,
+    consumer_user: User,
+) -> None:
+    with django_capture_on_commit_callbacks() as callbacks:
+        UserService().request_password_reset(consumer_user.pk)
+
+    assert len(callbacks) == 1
+    password_reset_email_delay.assert_not_called()
+
+
+def test_request_password_reset_queues_email_for_user(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    password_reset_email_delay: Mock,
+    consumer_user: User,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        UserService().request_password_reset(consumer_user.pk)
+
+    password_reset_email_delay.assert_called_once_with(consumer_user.pk)
+
+
+def test_request_password_reset_logs_requested(
+    json_logs: io.StringIO, password_reset_email_delay: Mock, consumer_user: User
+) -> None:
+    UserService().request_password_reset(consumer_user.pk)
+
+    [line] = events(json_logs, "password_reset_requested")
+    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
+
+
+def test_request_password_reset_logs_when_email_cannot_be_queued(
+    monkeypatch: pytest.MonkeyPatch,
+    json_logs: io.StringIO,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    consumer_user: User,
+) -> None:
+    monkeypatch.setattr(
+        "users.services.user_service.send_password_reset_email.delay",
+        Mock(side_effect=OperationalError("broker unreachable")),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        UserService().request_password_reset(consumer_user.pk)
+
+    [line] = events(json_logs, "password_reset_email_queue_failed")
+    assert (line["level"], line["user_id"]) == ("error", consumer_user.pk)

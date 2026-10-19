@@ -115,6 +115,37 @@ def test_verify_marks_user_verified(consumer_user: User, uidb64: str, token: str
     assert consumer_user.is_email_verified
 
 
+def test_mark_verified_verifies_unverified_user(consumer_user: User) -> None:
+    was_marked = EmailVerificationService().mark_verified(consumer_user)
+
+    consumer_user.refresh_from_db()
+    assert was_marked
+    assert consumer_user.is_email_verified
+
+
+def test_mark_verified_keeps_first_timestamp_when_already_verified(consumer_user: User) -> None:
+    verification = EmailVerificationService()
+    verification.mark_verified(consumer_user)
+    consumer_user.refresh_from_db()
+    first_verified_at = consumer_user.email_verified_at
+
+    was_marked = verification.mark_verified(consumer_user)
+
+    consumer_user.refresh_from_db()
+    assert not was_marked
+    assert consumer_user.email_verified_at == first_verified_at
+
+
+def test_mark_verified_logs_only_first_time(json_logs: io.StringIO, consumer_user: User) -> None:
+    verification = EmailVerificationService()
+
+    verification.mark_verified(consumer_user)
+    verification.mark_verified(consumer_user)
+
+    [line] = events(json_logs, "email_verified")
+    assert line["user_id"] == consumer_user.pk
+
+
 def test_verify_raises_when_link_used_twice(consumer_user: User, uidb64: str, token: str) -> None:
     verification = EmailVerificationService()
     verification.verify(uidb64=uidb64, token=token)

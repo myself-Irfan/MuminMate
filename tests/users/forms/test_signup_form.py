@@ -1,7 +1,7 @@
 import pytest
 from django.contrib.auth import password_validation
 
-from users.forms import SignupForm
+from users.forms.signup_form import SignupForm
 from users.models import User
 
 

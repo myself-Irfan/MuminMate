@@ -40,6 +40,12 @@ def test_login_page_links_to_signup(client: Client) -> None:
     assertContains(response, 'href="/accounts/signup/"')
 
 
+def test_login_page_links_to_password_reset(client: Client) -> None:
+    response = client.get("/accounts/login/")
+
+    assertContains(response, 'href="/accounts/password-reset/"')
+
+
 @pytest.mark.django_db
 def test_signup_page_shows_form(client: Client) -> None:
     response = client.get("/accounts/signup/")
@@ -92,7 +98,9 @@ def test_signup_shows_error_when_parallel_signup_wins(
     consumer_user: User,
     signup_payload: dict[str, str],
 ) -> None:
-    monkeypatch.setattr("users.forms.UserService.get_id_by_email", Mock(return_value=None))
+    monkeypatch.setattr(
+        "users.forms.signup_form.UserService.get_id_by_email", Mock(return_value=None)
+    )
     signup_payload["email"] = consumer_user.email
 
     response = client.post("/accounts/signup/", signup_payload)

@@ -1,8 +1,11 @@
 from typing import Any
 
 from django.contrib import messages
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_not_required
+from django.contrib.auth.forms import SetPasswordForm
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -12,9 +15,23 @@ from django.views.decorators.cache import never_cache
 from django.views.generic import FormView, TemplateView
 
 from users.exceptions import EmailTakenError, InvalidVerificationLinkError
-from users.forms import SignupForm
+from users.forms.authentication_forms import ConsumerAuthenticationForm
+from users.forms.password_reset_form import ConsumerPasswordResetForm
+from users.forms.signup_form import SignupForm
+from users.models import User
 from users.services.email_verification_service import EmailVerificationService
+from users.services.password_reset_service import PasswordResetService
 from users.services.user_service import UserService
+
+
+class ConsumerLoginView(auth_views.LoginView):
+    authentication_form = ConsumerAuthenticationForm
+    redirect_authenticated_user = True
+    url_name = "login"
+
+
+class ConsumerLogoutView(auth_views.LogoutView):
+    url_name = "logout"
 
 
 @method_decorator(login_not_required, name="dispatch")
@@ -76,3 +93,30 @@ class VerifyEmailView(TemplateView):
             return TemplateResponse(request, self.invalid_template_name)
         messages.success(request, "Your email is confirmed. Log in to continue.")
         return redirect("login")
+
+
+class ConsumerPasswordResetView(auth_views.PasswordResetView):
+    form_class = ConsumerPasswordResetForm
+    template_name = "registration/password_reset/form.html"
+    url_name = "password_reset"
+
+
+class ConsumerPasswordResetDoneView(auth_views.PasswordResetDoneView):
+    template_name = "registration/password_reset/done.html"
+    url_name = "password_reset_done"
+
+
+class ConsumerPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
+    template_name = "registration/password_reset/confirm.html"
+    url_name = "password_reset_confirm"
+
+    def form_valid(self, form: SetPasswordForm[User]) -> HttpResponse:
+        with transaction.atomic():
+            response = super().form_valid(form)
+            PasswordResetService().complete_reset(form.user, self.request.META.get("REMOTE_ADDR"))
+        return response
+
+
+class ConsumerPasswordResetCompleteView(auth_views.PasswordResetCompleteView):
+    template_name = "registration/password_reset/complete.html"
+    url_name = "password_reset_complete"
