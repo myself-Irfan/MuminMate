@@ -2,11 +2,12 @@ from functools import partial
 
 import structlog
 from django.db import IntegrityError, transaction
+from kombu.exceptions import OperationalError
 from psycopg.errors import UniqueViolation
 
 from users.exceptions import EmailTakenError
 from users.models import User
-from users.tasks import send_signup_email
+from users.tasks import send_password_reset_email, send_signup_email
 
 logger = structlog.get_logger(__name__)
 
@@ -17,7 +18,11 @@ class UserService:
 
     def signup(self, *, email: str, password: str) -> None:
         user_id = self._create_signup_user(email, password)
-        transaction.on_commit(partial(send_signup_email.delay, user_id))
+        transaction.on_commit(partial(self._queue_signup_email, user_id))
+
+    def request_password_reset(self, user_id: int) -> None:
+        logger.info("password_reset_requested", user_id=user_id)
+        transaction.on_commit(partial(self._queue_password_reset_email, user_id))
 
     def get_id_by_email(self, email: str) -> int | None:
         try:
@@ -38,6 +43,19 @@ class UserService:
             raise EmailTakenError("An account with this email already exists.") from error
         logger.info("signup_succeeded", user_id=user.pk)
         return user.pk
+
+    # A broker outage mustn't fail the request, as with Django's own password reset send_mail.
+    def _queue_signup_email(self, user_id: int) -> None:
+        try:
+            send_signup_email.delay(user_id)
+        except OperationalError:
+            logger.exception("signup_email_queue_failed", user_id=user_id)
+
+    def _queue_password_reset_email(self, user_id: int) -> None:
+        try:
+            send_password_reset_email.delay(user_id)
+        except OperationalError:
+            logger.exception("password_reset_email_queue_failed", user_id=user_id)
 
     # Postgres names unique=True's constraint <table>_<column>_key.
     def _is_email_taken(self, error: IntegrityError) -> bool:

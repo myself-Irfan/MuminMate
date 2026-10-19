@@ -80,6 +80,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `/accounts/login/` | Consumer login (staff and superuser accounts are refused; they use `/admin/`) |
 | `/accounts/logout/` | Log out (POST only) |
 | `/accounts/signup/` | Create a consumer account (public); always ends on `/accounts/signup/done/` |
+| `/accounts/password-reset/` | Email a link to choose a new password (public); always ends on `/accounts/password-reset/done/` |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
 ## Access
@@ -117,6 +118,20 @@ constraint): lookalike letters such as `ı` would otherwise make `ırfan@` a dif
 `irfan@`. This matches the HTML standard's valid email address; for an international domain, browsers
 send (and users can type) its `xn--` form.
 
+## Password reset
+
+"Forgot your password?" on the login page opens `/accounts/password-reset/`. Every email gets the same
+"check your email" page, whether or not an account exists, and the worker sends the mail. Only an
+active consumer account with a password gets one; staff and superusers get nothing here (a superuser
+resets a staff password in `/admin/`, and their own with `python manage.py changepassword`).
+
+The link opens a page that first moves the token out of the address bar (Django keeps it in the
+session), then asks for the new password. It stops working once used, after
+`DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`, or when the password changes or the user logs in. Setting a new
+password logs out the account's other sessions, confirms the email if it wasn't yet (the link proved
+the inbox), and clears that email's failed logins from that IP. It doesn't log the user in. Reset
+requests aren't rate-limited yet (1.9b).
+
 ## Sessions
 
 Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE_MINUTES` without a
@@ -145,8 +160,8 @@ at startup.
 
 The limits apply to both logins (`/accounts/login/` and `/admin/`) and to `authenticate()` itself.
 A refused attempt looks like a wrong password, skips the password check and isn't counted, so waiting
-works unless someone keeps guessing. Unknown emails count too. A successful login clears only that
-email's failures from that IP. IPv6 addresses count per `/64`.
+works unless someone keeps guessing. Unknown emails count too. A successful login (or password reset)
+clears only that email's failures from that IP. IPv6 addresses count per `/64`.
 
 Each failure stores a keyed hash of the email (never the email itself), the IP and the time. The hash is
 keyed with `DJANGO_SECRET_KEY`, so rotating the key resets every email's failure count. IPs are
@@ -188,8 +203,8 @@ Each request logs `request_started` and `request_finished` (`request_failed` on 
   database (a duplicate-key error names the email), so treat logs as personal data and restrict who
   can read them.
 
-Auth events (each logged once, from wherever the decision is made; every line also has `request_id`
-and `ip`):
+Auth events (each logged once, from wherever the decision is made; every line also has `request_id`,
+and `ip` unless the worker logged it):
 
 | Event | Level | Keys |
 |---|---|---|
@@ -200,6 +215,14 @@ and `ip`):
 | `session_expired` | info, warning when `login_time_missing` | `reason` (`absolute_age` with `session_age_seconds`, `login_time_missing`), `user_id` |
 | `signup_succeeded` | info | `user_id` |
 | `signup_refused` | info | `reason` (`email_taken`), `user_id` of the existing account |
+| `signup_email_skipped` | info | `user_id` (worker: the account was deactivated or deleted before the mail went out) |
+| `email_verified` | info | `user_id` (from a confirm link or a completed password reset) |
+| `email_verification_refused` | warning | `user_id` (always `null`: a bad link names no account we can trust) |
+| `password_reset_requested` | info | `user_id` (`null` when no eligible account matches: unknown, inactive or without a password) |
+| `password_reset_refused` | warning | `reason` (`privileged_account`), `user_id` |
+| `password_reset_completed` | info | `user_id` |
+| `password_reset_email_skipped` | info | `user_id` (worker: the account is no longer eligible) |
+| `signup_email_queue_failed`, `password_reset_email_queue_failed` | error | `user_id`; the broker couldn't be reached, so no mail was queued (traceback attached) |
 
 `email_digest` is the same keyed hash the `login_failures` table stores, so many failures on one
 address show up even when it has no account; the email itself is never logged. The pages look the
@@ -228,9 +251,9 @@ there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in C
   in `CELERY_TASK_ROUTES`, on one topic exchange (`tasks`). Celery also requires a `default` queue: it
   catches tasks without a route, and a test fails for any task that has none. The `worker` service
   consumes the light queues (`-Q default,email`); heavy ones get their own worker.
-- Signup mail is sent by the `send_signup_email` task: it retries temporary SMTP errors with
-  growing, randomised waits (up to 5 times, about 12 minutes on average) and gives up at once on a
-  refused address or a wrong login. Each attempt is limited to 60 seconds.
+- Mail is sent by tasks (`send_signup_email`, `send_password_reset_email`): each retries temporary
+  SMTP errors with growing, randomised waits (up to 5 times, about 12 minutes on average) and gives
+  up at once on a refused address or a wrong login. Each attempt is limited to 60 seconds.
 - Tasks take ids, never personal data, and are queued only after the transaction commits. A task
   runs again if its worker is killed or loses the broker mid-task, so every task must be safe to run
   twice; one whose process alone crashes (out of memory, say) is marked failed instead.
@@ -323,7 +346,7 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
 users/     custom user model (email login, no username), manager, admin, signup, email verification,
-           login/logout, session timeouts, login throttling, auth event logging
+           password reset, login/logout, session timeouts, login throttling, auth event logging
 web/       server-rendered pages (home)
 templates/ shared layout (base.html)
 static/    CSS, fonts, logos (self-hosted, with licences)

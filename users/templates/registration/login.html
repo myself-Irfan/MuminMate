@@ -13,6 +13,7 @@
       <input type="hidden" name="next" value="{{ next }}">
       <button type="submit">Log in</button>
     </form>
+    <p class="note"><a href="{% url 'password_reset' %}">Forgot your password?</a></p>
     <p class="note">New here? <a href="{% url 'signup' %}">Create an account</a>.</p>
     <p class="note">Staff? Use the <a href="{% url 'admin:login' %}">admin login</a>.</p>
   </article>

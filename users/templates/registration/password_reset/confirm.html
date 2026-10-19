@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{% if validlink %}Choose a new password{% else %}Invalid link{% endif %} - MuminMate{% endblock %}
+
+{% block content %}
+  <article class="card">
+    {% include "users/partials/greeting.html" %}
+    {% include "partials/divider.html" %}
+    {% if validlink %}
+      <h1>Choose a new password</h1>
+      <form method="post">
+        {% csrf_token %}
+        {{ form }}
+        <button type="submit">Save password</button>
+      </form>
+    {% else %}
+      <h1>This reset link is invalid or has expired</h1>
+      <p>It may have been used already. You can <a href="{% url 'password_reset' %}">ask for a new link</a>.</p>
+    {% endif %}
+  </article>
+{% endblock %}

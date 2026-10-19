@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 import structlog
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -7,12 +5,11 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
-from django.utils.timesince import timeuntil
 
 from users.exceptions import InvalidVerificationLinkError
 from users.models import User
 from users.services.email_service import EmailService
-from users.tokens import EmailVerificationTokenGenerator
+from users.tokens import EmailVerificationTokenGenerator, describe_token_lifetime
 
 logger = structlog.get_logger(__name__)
 
@@ -31,7 +28,7 @@ class EmailVerificationService:
             template_name="users/emails/verify_email",
             context={
                 "verify_url": self._build_verify_url(user),
-                "expiry": self._describe_link_lifetime(),
+                "expiry": describe_token_lifetime(),
             },
         )
 
@@ -40,27 +37,25 @@ class EmailVerificationService:
 
     def verify(self, *, uidb64: str, token: str) -> None:
         user = self._get_user_by_link(uidb64, token)
-        if user is not None:
-            # Conditional update: of two simultaneous uses, only one changes the row.
-            updated = User.objects.filter(pk=user.pk, email_verified_at__isnull=True).update(
-                email_verified_at=timezone.now()
-            )
-            if updated:
-                logger.info("email_verified", user_id=user.pk)
-                return
+        if user is not None and self.mark_verified(user):
+            return
         logger.warning("email_verification_refused", user_id=None)
         raise InvalidVerificationLinkError("Invalid or expired verification link.")
+
+    # Conditional update: of two simultaneous calls, only one changes the row.
+    def mark_verified(self, user: User) -> bool:
+        updated = User.objects.filter(pk=user.pk, email_verified_at__isnull=True).update(
+            email_verified_at=timezone.now()
+        )
+        if updated:
+            logger.info("email_verified", user_id=user.pk)
+        return bool(updated)
 
     def _build_verify_url(self, user: User) -> str:
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
         token = EmailVerificationTokenGenerator().make_token(user)
         path = reverse("verify_email", kwargs={"uidb64": uidb64, "token": token})
         return f"{settings.PUBLIC_URL}{path}"
-
-    # Same instant on both sides: a later now would read "2 days, 23 hours".
-    def _describe_link_lifetime(self) -> str:
-        now = timezone.now()
-        return timeuntil(now + timedelta(seconds=settings.PASSWORD_RESET_TIMEOUT), now=now)
 
     def _get_user_by_link(self, uidb64: str, token: str) -> User | None:
         user = self._get_user(uidb64)

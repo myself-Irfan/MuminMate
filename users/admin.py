@@ -4,7 +4,7 @@ from django.forms import ModelForm
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
-from users.forms import UserAdminChangeForm, UserAdminCreationForm
+from users.forms.user_admin_forms import UserAdminChangeForm, UserAdminCreationForm
 from users.models import User
 from users.services.user_service import UserService
 

@@ -3,7 +3,6 @@ from typing import Any
 import django_stubs_ext
 import structlog
 from django import forms
-from django.contrib.admin.forms import AdminAuthenticationForm
 from django.contrib.auth import forms as auth_forms
 from django.core.exceptions import ValidationError
 
@@ -12,37 +11,6 @@ from users.services.user_service import UserService
 from users.validators import validate_email_is_ascii
 
 logger = structlog.get_logger(__name__)
-
-
-# Invite: the user sets the password from the invite email.
-class UserAdminCreationForm(forms.ModelForm[User]):
-    class Meta:
-        model = User
-        fields = ("email",)
-
-
-class UserAdminChangeForm(auth_forms.UserChangeForm[User]):
-    class Meta:
-        model = User
-        fields = "__all__"
-
-
-class ConsumerAuthenticationForm(auth_forms.AuthenticationForm):
-    username = auth_forms.UsernameField(widget=forms.EmailInput(attrs={"autofocus": True}))
-
-    def confirm_login_allowed(self, user: User) -> None:
-        super().confirm_login_allowed(user)
-        if user.is_privileged:
-            logger.warning("login_refused", reason="privileged_account", user_id=user.pk)
-            raise self.get_invalid_login_error()
-
-
-class StaffAuthenticationForm(AdminAuthenticationForm):
-    def confirm_login_allowed(self, user: User) -> None:
-        # super() raises for non-staff: log first.
-        if not user.is_staff:
-            logger.warning("login_refused", reason="not_staff", user_id=user.pk)
-        super().confirm_login_allowed(user)
 
 
 # Lets SetPasswordMixin[User] run; built into Django 6.0 (d0c8f89), delete on upgrade.
