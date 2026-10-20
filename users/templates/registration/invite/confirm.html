@@ -1,0 +1,18 @@
+{% extends "registration/base_card.html" %}
+
+{% block title %}{% if validlink %}Set your password{% else %}Invalid link{% endif %} - MuminMate{% endblock %}
+
+{% block card %}
+  {% if validlink %}
+    <h1>Set your password</h1>
+    <p>You&rsquo;ve been invited to MuminMate. Choose a password to finish setting up your account.</p>
+    <form method="post">
+      {% csrf_token %}
+      {{ form }}
+      <button type="submit">Save password</button>
+    </form>
+  {% else %}
+    <h1>This invite link is invalid or has expired</h1>
+    <p>It may have been used already. Ask the person who invited you for a new invite.</p>
+  {% endif %}
+{% endblock %}

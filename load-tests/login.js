@@ -44,6 +44,8 @@ export const options = {
     valid: scenario("valid", CONFIG.duration),
   },
   thresholds: {
+    // A failed check() only fails the run through a threshold.
+    checks: ["rate==1"],
     http_req_failed: [`rate<${CONFIG.maxErrorRate}`],
     "http_req_duration{endpoint:post_throttled}": [`p(95)<${CONFIG.p95.throttled}`],
     "http_req_duration{endpoint:post_valid}": [`p(95)<${CONFIG.p95.valid}`],

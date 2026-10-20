@@ -210,8 +210,13 @@ jobs:
           LOAD_PASSWORD=$(openssl rand -hex 16)
           export LOAD_PASSWORD
           docker exec --env LOAD_PASSWORD web python manage.py shell -c "import os
+          from django.utils import timezone
           from users.models import User
-          User.objects.create_user(email='load@example.com', password=os.environ['LOAD_PASSWORD'])"
+          User.objects.create_user(
+              email='load@example.com',
+              password=os.environ['LOAD_PASSWORD'],
+              email_verified_at=timezone.now(),
+          )"
           mkdir load-test-report
           docker run --rm --network host --user "$(id -u):$(id -g)" \
             --volume "$PWD/load-tests:/scripts:ro" --volume "$PWD/load-test-report:/report" \

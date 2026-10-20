@@ -116,6 +116,11 @@ CELERY_TASK_ROUTES = {
         "queue": "email",
         "routing_key": "email.password_reset",
     },
+    "users.tasks.send_already_verified_email": {
+        "queue": "email",
+        "routing_key": "email.already_verified",
+    },
+    "users.tasks.send_invite_email": {"queue": "email", "routing_key": "email.invite"},
 }
 # A typo'd queue name fails at publish instead of creating a queue no worker reads.
 CELERY_TASK_CREATE_MISSING_QUEUES = False

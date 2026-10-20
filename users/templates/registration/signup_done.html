@@ -1,13 +1,9 @@
-{% extends "base.html" %}
+{% extends "registration/base_card.html" %}
 
 {% block title %}Check your email - MuminMate{% endblock %}
 
-{% block content %}
-  <article class="card">
-    {% include "users/partials/greeting.html" %}
-    {% include "partials/divider.html" %}
-    <h1>Check your email</h1>
-    <p>We&rsquo;ll send a link to the address you gave. Open it to finish setting up your account.</p>
-    <p class="note">No email? Check your spam folder, or <a href="{% url 'login' %}">log in</a> if you already have an account.</p>
-  </article>
+{% block card %}
+  <h1>Check your email</h1>
+  <p>We&rsquo;ll send a link to the address you gave. Open it to finish setting up your account.</p>
+  <p class="note">No email? Check your spam folder, or <a href="{% url 'resend_verification' %}">send a new link</a>.</p>
 {% endblock %}

@@ -16,6 +16,11 @@ def other_staff_user(db: None, password: str) -> User:
     return User.objects.create_user(email="peer@example.com", password=password, is_staff=True)
 
 
+@pytest.fixture
+def invited_user(db: None) -> User:
+    return User.objects.create_user(email="invited@example.com", password=None)
+
+
 @pytest.fixture(params=["admin_user", "other_staff_user", "staff_user"])
 def privileged_user(request: pytest.FixtureRequest) -> User:
     user: User = request.getfixturevalue(request.param)

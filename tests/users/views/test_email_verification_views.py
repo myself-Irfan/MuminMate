@@ -6,7 +6,7 @@ import pytest
 from django.test import Client
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from pytest_django.asserts import assertContains, assertRedirects
+from pytest_django.asserts import assertContains, assertRedirects, assertTemplateUsed
 
 from tests.logging_support import events, json_lines
 from users.models import User
@@ -14,58 +14,59 @@ from users.tokens import EmailVerificationTokenGenerator
 
 
 @pytest.fixture
-def verify_path(consumer_user: User) -> str:
-    uidb64 = urlsafe_base64_encode(force_bytes(consumer_user.pk))
-    token = EmailVerificationTokenGenerator().make_token(consumer_user)
+def verify_path(unverified_consumer_user: User) -> str:
+    uidb64 = urlsafe_base64_encode(force_bytes(unverified_consumer_user.pk))
+    token = EmailVerificationTokenGenerator().make_token(unverified_consumer_user)
     return f"/accounts/verify/{uidb64}/{token}/"
 
 
 def test_verify_page_asks_to_confirm_when_link_valid(
-    client: Client, consumer_user: User, verify_path: str
+    client: Client, unverified_consumer_user: User, verify_path: str
 ) -> None:
     response = client.get(verify_path)
 
-    consumer_user.refresh_from_db()
+    unverified_consumer_user.refresh_from_db()
     assertContains(response, 'method="post"')
     assertContains(response, "Confirm my email")
-    assert not consumer_user.is_email_verified
+    assert not unverified_consumer_user.is_email_verified
 
 
 def test_verify_page_shows_invalid_when_link_invalid(
-    client: Client, consumer_user: User, staff_user: User
+    client: Client, unverified_consumer_user: User, staff_user: User
 ) -> None:
-    uidb64 = urlsafe_base64_encode(force_bytes(consumer_user.pk))
+    uidb64 = urlsafe_base64_encode(force_bytes(unverified_consumer_user.pk))
     staff_token = EmailVerificationTokenGenerator().make_token(staff_user)
 
     response = client.get(f"/accounts/verify/{uidb64}/{staff_token}/")
 
     assertContains(response, "This link is invalid or has expired")
     assertContains(response, 'href="/accounts/login/"')
+    assertContains(response, 'href="/accounts/verify/resend/"')
 
 
 def test_verify_confirms_and_redirects_to_login(
-    client: Client, consumer_user: User, verify_path: str
+    client: Client, unverified_consumer_user: User, verify_path: str
 ) -> None:
     response = client.post(verify_path, follow=True)
 
-    consumer_user.refresh_from_db()
+    unverified_consumer_user.refresh_from_db()
     assertRedirects(response, "/accounts/login/")
     assertContains(response, "Your email is confirmed. Log in to continue.")
-    assert consumer_user.is_email_verified
+    assert unverified_consumer_user.is_email_verified
 
 
 def test_verify_post_shows_invalid_when_link_used(
-    client: Client, consumer_user: User, verify_path: str
+    client: Client, unverified_consumer_user: User, verify_path: str
 ) -> None:
     client.post(verify_path)
-    consumer_user.refresh_from_db()
-    first_verified_at = consumer_user.email_verified_at
+    unverified_consumer_user.refresh_from_db()
+    first_verified_at = unverified_consumer_user.email_verified_at
 
     response = client.post(verify_path)
 
-    consumer_user.refresh_from_db()
+    unverified_consumer_user.refresh_from_db()
     assertContains(response, "This link is invalid or has expired")
-    assert consumer_user.email_verified_at == first_verified_at
+    assert unverified_consumer_user.email_verified_at == first_verified_at
 
 
 @pytest.mark.parametrize("method", ["get", "post"])
@@ -125,7 +126,7 @@ def test_failed_verify_request_logs_no_token(
     monkeypatch: pytest.MonkeyPatch, json_logs: io.StringIO, verify_path: str
 ) -> None:
     monkeypatch.setattr(
-        "users.views.email_verification_view.EmailVerificationService.is_link_valid",
+        "users.views.email_verification_views.EmailVerificationService.is_link_valid",
         Mock(side_effect=RuntimeError),
     )
     token = verify_path.rstrip("/").rsplit("/", 1)[1]
@@ -135,3 +136,60 @@ def test_failed_verify_request_logs_no_token(
     [failed] = events(json_logs, "request_failed")
     assert token not in failed["request"]
     assert "/*****/" in failed["request"]
+
+
+def test_resend_page_renders(client: Client) -> None:
+    response = client.get("/accounts/verify/resend/")
+
+    assertTemplateUsed(response, "registration/resend_verification/form.html")
+    assertContains(response, 'type="email"')
+
+
+def test_resend_requests_new_link_for_typed_email(
+    monkeypatch: pytest.MonkeyPatch, client: Client
+) -> None:
+    request_resend = Mock()
+    monkeypatch.setattr(
+        "users.views.email_verification_views.EmailVerificationService.request_resend",
+        request_resend,
+    )
+
+    response = client.post("/accounts/verify/resend/", {"email": "irfan@example.com"})
+
+    assertRedirects(response, "/accounts/verify/resend/done/")
+    request_resend.assert_called_once_with("irfan@example.com")
+
+
+# Same answer for every email: the page must not tell accounts apart.
+@pytest.mark.django_db
+@pytest.mark.parametrize("user_fixture", ["unverified_consumer_user", "consumer_user", None])
+def test_resend_redirects_to_done_for_any_email(
+    request: pytest.FixtureRequest, client: Client, user_fixture: str | None
+) -> None:
+    email = request.getfixturevalue(user_fixture).email if user_fixture else "nobody@example.com"
+
+    response = client.post("/accounts/verify/resend/", {"email": email})
+
+    assertRedirects(response, "/accounts/verify/resend/done/")
+
+
+def test_resend_done_page_renders(client: Client) -> None:
+    response = client.get("/accounts/verify/resend/done/")
+
+    assertTemplateUsed(response, "registration/resend_verification/done.html")
+
+
+def test_resend_shows_error_when_email_invalid(
+    monkeypatch: pytest.MonkeyPatch, client: Client
+) -> None:
+    request_resend = Mock()
+    monkeypatch.setattr(
+        "users.views.email_verification_views.EmailVerificationService.request_resend",
+        request_resend,
+    )
+
+    response = client.post("/accounts/verify/resend/", {"email": "not-an-email"})
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].has_error("email", "invalid")
+    request_resend.assert_not_called()

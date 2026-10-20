@@ -12,7 +12,12 @@ from celery.exceptions import Retry, SoftTimeLimitExceeded
 from django.core import mail
 
 from users.models import User
-from users.tasks import send_password_reset_email, send_signup_email
+from users.tasks import (
+    send_already_verified_email,
+    send_invite_email,
+    send_password_reset_email,
+    send_signup_email,
+)
 
 type EmailTaskCase = tuple[Task[[int], None], str]
 
@@ -21,8 +26,10 @@ type EmailTaskCase = tuple[Task[[int], None], str]
     params=[
         (send_signup_email, "users.tasks.EmailService.send_signup_email"),
         (send_password_reset_email, "users.tasks.EmailService.send_password_reset_email"),
+        (send_already_verified_email, "users.tasks.EmailService.send_already_verified_email"),
+        (send_invite_email, "users.tasks.EmailService.send_invite_email"),
     ],
-    ids=["signup", "password_reset"],
+    ids=["signup", "password_reset", "already_verified", "invite"],
 )
 def email_task(request: pytest.FixtureRequest) -> EmailTaskCase:
     task_and_service_method: EmailTaskCase = request.param
@@ -41,6 +48,20 @@ def test_password_reset_email_task_sends_mail(consumer_user: User) -> None:
 
     [sent] = mail.outbox
     assert sent.to == [consumer_user.email]
+
+
+def test_already_verified_email_task_sends_mail(consumer_user: User) -> None:
+    send_already_verified_email(consumer_user.pk)
+
+    [sent] = mail.outbox
+    assert sent.to == [consumer_user.email]
+
+
+def test_invite_email_task_sends_mail(invited_user: User) -> None:
+    send_invite_email(invited_user.pk)
+
+    [sent] = mail.outbox
+    assert sent.to == [invited_user.email]
 
 
 @pytest.mark.parametrize(

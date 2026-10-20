@@ -1,18 +1,14 @@
-{% extends "base.html" %}
+{% extends "registration/base_card.html" %}
 
 {% block title %}Reset your password - MuminMate{% endblock %}
 
-{% block content %}
-  <article class="card">
-    {% include "users/partials/greeting.html" %}
-    {% include "partials/divider.html" %}
-    <h1>Reset your password</h1>
-    <p>Enter your account&rsquo;s email and we&rsquo;ll send you a link to choose a new password.</p>
-    <form method="post">
-      {% csrf_token %}
-      {{ form }}
-      <button type="submit">Send reset link</button>
-    </form>
-    <p class="note">Remembered it? <a href="{% url 'login' %}">Log in</a>.</p>
-  </article>
+{% block card %}
+  <h1>Reset your password</h1>
+  <p>Enter your account&rsquo;s email and we&rsquo;ll send you a link to choose a new password.</p>
+  <form method="post">
+    {% csrf_token %}
+    {{ form }}
+    <button type="submit">Send reset link</button>
+  </form>
+  <p class="note">Remembered it? <a href="{% url 'login' %}">Log in</a>.</p>
 {% endblock %}

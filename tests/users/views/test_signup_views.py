@@ -113,3 +113,4 @@ def test_signup_done_page_asks_to_check_email(client: Client) -> None:
     response = client.get("/accounts/signup/done/")
 
     assertContains(response, "Check your email")
+    assertContains(response, 'href="/accounts/verify/resend/"')

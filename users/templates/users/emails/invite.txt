@@ -1,0 +1,9 @@
+{% extends "emails/base.txt" %}
+
+{% block content %}You've been invited to MuminMate. Choose a password to set up your account:
+
+{{ invite_url }}
+
+This link expires in {{ expiry }} and works once.{% endblock %}
+
+{% block footer %}If you weren't expecting this, ignore this email; no account is active until a password is set.{% endblock %}

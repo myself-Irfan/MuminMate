@@ -17,11 +17,8 @@ cp .env.example .env   # fill in the secrets; DJANGO_DEBUG=true locally
 make up
 uv run python manage.py migrate
 uv run python manage.py check
-uv run python manage.py createsuperuser   # logs in with email, no username
+uv run python manage.py createsuperuser   # the first superuser; logs in with email, no username
 ```
-
-A database migrated before the custom user model (it has `auth_user`) must be recreated:
-`docker compose down -v && make up`, then migrate. This deletes the local db data.
 
 ## Configuration
 
@@ -80,7 +77,9 @@ Every variable is required; the app refuses to start if one is missing.
 | `/accounts/login/` | Consumer login (staff and superuser accounts are refused; they use `/admin/`) |
 | `/accounts/logout/` | Log out (POST only) |
 | `/accounts/signup/` | Create a consumer account (public); always ends on `/accounts/signup/done/` |
+| `/accounts/verify/resend/` | Email a new confirmation link (public); always ends on `/accounts/verify/resend/done/` |
 | `/accounts/password-reset/` | Email a link to choose a new password (public); always ends on `/accounts/password-reset/done/` |
+| `/accounts/invite/<uid>/<token>/` | Set your password from an invite email (public) |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
 ## Access
@@ -97,21 +96,37 @@ Hashed with Argon2id. A password needs at least 8 characters, and is rejected if
 numeric or too similar to the email. `createsuperuser --noinput` (`DJANGO_SUPERUSER_PASSWORD`) skips
 these checks, as Django does: choose a strong password.
 
-Staff add a user by email only, as an invite: staff never choose or see a user's password. The
-account has no usable password until the user sets one from the invite email, so it can't log in
-before that (the invite email arrives with email verification).
+## Invites
+
+`createsuperuser` makes the first superuser; every other account staff add is an invite. In `/admin/`,
+staff enter only an email: they never choose or see the password. The account has no usable password,
+so it can't log in, and the worker emails a link to set one. The link works once and expires after
+`DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`. Setting the password confirms the email; staff are then sent to
+`/admin/`, consumers to `/accounts/login/`.
+
+To send a new link, select the accounts in the admin's user list and run "Resend invite". It only
+mails accounts that never set a password; staff who aren't superusers can resend to consumers only,
+as with editing.
 
 ## Signup
 
 `/accounts/signup/` says when an email already has an account ("An account with this email already
 exists. Log in instead."), and nothing is saved or mailed. A race between two signups for one email
-ends the same way: the loser gets the same message, never an error page. Signup isn't rate-limited yet
-(1.9b).
+ends the same way: the loser gets the same message, never an error page.
 
 After signup, the worker mails a link to confirm the address. The link opens a confirm page, and only
 its button confirms, so mail scanners that open links change nothing. It stops working once used,
 after `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`, or when the email changes, and every bad link gets the
-same page. Logins aren't refused for unconfirmed emails yet (1.9b).
+same page.
+
+A consumer can't log in until the email is confirmed. After a correct password they see "Confirm your
+email to log in." with a link to send a new one; a wrong password still gets the usual error, so the
+message reveals nothing to someone guessing. `/accounts/verify/resend/` gives every email the same
+answer and lets the inbox tell the truth: an unconfirmed account gets a new link, a confirmed one an
+"already confirmed, log in" email, and unknown, inactive or staff emails get nothing. The refused
+login, the invalid-link page and the "check your email" page all link to it.
+
+Signup, password reset and resend aren't rate-limited yet.
 
 Email addresses are ASCII only, everywhere (signup, admin, `createsuperuser`, and a database
 constraint): lookalike letters such as `ı` would otherwise make `ırfan@` a different account from
@@ -129,8 +144,7 @@ The link opens a page that first moves the token out of the address bar (Django 
 session), then asks for the new password. It stops working once used, after
 `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`, or when the password changes or the user logs in. Setting a new
 password logs out the account's other sessions, confirms the email if it wasn't yet (the link proved
-the inbox), and clears that email's failed logins from that IP. It doesn't log the user in. Reset
-requests aren't rate-limited yet (1.9b).
+the inbox), and clears that email's failed logins from that IP. It doesn't log the user in.
 
 ## Sessions
 
@@ -160,8 +174,8 @@ at startup.
 
 The limits apply to both logins (`/accounts/login/` and `/admin/`) and to `authenticate()` itself.
 A refused attempt looks like a wrong password, skips the password check and isn't counted, so waiting
-works unless someone keeps guessing. Unknown emails count too. A successful login (or password reset)
-clears only that email's failures from that IP. IPv6 addresses count per `/64`.
+works unless someone keeps guessing. Unknown emails count too. A successful login (or a password reset
+or accepted invite) clears only that email's failures from that IP. IPv6 addresses count per `/64`.
 
 Each failure stores a keyed hash of the email (never the email itself), the IP and the time. The hash is
 keyed with `DJANGO_SECRET_KEY`, so rotating the key resets every email's failure count. IPs are
@@ -193,8 +207,8 @@ Each request logs `request_started` and `request_finished` (`request_failed` on 
   either way it comes back in the response header and is on every line of that request. Quote it when
   reporting a problem. Other values are replaced, and a client's `X-Correlation-ID` is ignored, so
   clients can't write into the logs.
-- **IP:** `REMOTE_ADDR`, so set uvicorn's `FORWARDED_ALLOW_IPS` behind a proxy (see Login limits); a
-  client's own `X-Forwarded-For` is never trusted.
+- **IP:** `REMOTE_ADDR` (behind a proxy, see Login limits); a client's own `X-Forwarded-For` is never
+  trusted.
 - **Masking:** values of keys that name a secret (`password`, `token`, `api_key`, `cookie`,
   `authorization`, …, in any spelling) and of such query-string parameters are logged as `***`.
   Tokens inside URL paths (email verification, password reset) are logged as `*****`, and those pages
@@ -210,19 +224,25 @@ and `ip` unless the worker logged it):
 |---|---|---|
 | `login_succeeded` | info | `user_id` |
 | `login_failed` | warning | `reason` (`bad_credentials`, `throttled`), `email_digest`, `user_id` (`null` without an account, and always when throttled: no lookup) |
-| `login_refused` | warning | `reason` (`privileged_account`: staff at the consumer login; `not_staff`: a consumer at the admin login), `user_id` |
+| `login_refused` | warning | `reason` (`privileged_account`: staff at the consumer login; `email_unverified`: an unconfirmed consumer; `not_staff`: a consumer at the admin login), `user_id` |
 | `logout_succeeded` | info | `user_id` |
 | `session_expired` | info, warning when `login_time_missing` | `reason` (`absolute_age` with `session_age_seconds`, `login_time_missing`), `user_id` |
 | `signup_succeeded` | info | `user_id` |
 | `signup_refused` | info | `reason` (`email_taken`), `user_id` of the existing account |
 | `signup_email_skipped` | info | `user_id` (worker: the account was deactivated or deleted before the mail went out) |
-| `email_verified` | info | `user_id` (from a confirm link or a completed password reset) |
+| `email_verified` | info | `user_id` (from a confirm link, a completed password reset or an accepted invite) |
 | `email_verification_refused` | warning | `user_id` (always `null`: a bad link names no account we can trust) |
+| `verification_resend_skipped` | info | `user_id` (`null` for an unknown email; set for an inactive or staff account) |
+| `already_verified_email_skipped` | info | `user_id` (worker: the account is no longer confirmed, active or a consumer) |
 | `password_reset_requested` | info | `user_id` (`null` when no eligible account matches: unknown, inactive or without a password) |
 | `password_reset_refused` | warning | `reason` (`privileged_account`), `user_id` |
 | `password_reset_completed` | info | `user_id` |
 | `password_reset_email_skipped` | info | `user_id` (worker: the account is no longer eligible) |
-| `signup_email_queue_failed`, `password_reset_email_queue_failed` | error | `user_id`; the broker couldn't be reached, so no mail was queued (traceback attached) |
+| `user_invited` | info | `user_id` |
+| `invite_resend_requested` | info | `user_id` |
+| `invite_accepted` | info | `user_id` |
+| `invite_email_skipped` | info | `user_id` (worker: the account is inactive, deleted or already has a password) |
+| `signup_email_queue_failed`, `already_verified_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed` | error | `user_id`; the broker couldn't be reached, so no mail was queued (traceback attached) |
 
 `email_digest` is the same keyed hash the `login_failures` table stores, so many failures on one
 address show up even when it has no account; the email itself is never logged. The pages look the
@@ -237,8 +257,8 @@ XI): storing and searching logs is the platform's job.
 
 [Celery](https://docs.celeryq.dev) runs background work in a separate worker process, with RabbitMQ as
 the broker. `make up` starts RabbitMQ (`127.0.0.1:5673`; its web UI at http://localhost:15673, log
-in with the `.env` user). Run `make worker` next to `make run`: the worker runs in Docker and is
-rebuilt when a file changes. Its logs stream there and in `docker compose logs -f worker`.
+in with the `.env` user). Run `make worker` next to `make run`; its logs stream there and in
+`docker compose logs -f worker`.
 `make stack` runs a worker too. Run one worker at a time: they share the broker, so any of them could
 take a task.
 
@@ -251,9 +271,10 @@ there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in C
   in `CELERY_TASK_ROUTES`, on one topic exchange (`tasks`). Celery also requires a `default` queue: it
   catches tasks without a route, and a test fails for any task that has none. The `worker` service
   consumes the light queues (`-Q default,email`); heavy ones get their own worker.
-- Mail is sent by tasks (`send_signup_email`, `send_password_reset_email`): each retries temporary
-  SMTP errors with growing, randomised waits (up to 5 times, about 12 minutes on average) and gives
-  up at once on a refused address or a wrong login. Each attempt is limited to 60 seconds.
+- Mail is sent by tasks (`send_signup_email`, `send_already_verified_email`,
+  `send_password_reset_email`, `send_invite_email`): each retries temporary SMTP errors with growing,
+  randomised waits (up to 5 times, about 12 minutes on average) and gives up at once on a refused
+  address or a wrong login. Each attempt is limited to 60 seconds.
 - Tasks take ids, never personal data, and are queued only after the transaction commits. A task
   runs again if its worker is killed or loses the broker mid-task, so every task must be safe to run
   twice; one whose process alone crashes (out of memory, say) is marked failed instead.
@@ -309,10 +330,11 @@ rate is exceeded:
 k6 run -e LOAD_BASE_URL=http://localhost:8000 -e LOAD_EMAIL=… -e LOAD_PASSWORD=… load-tests/login.js
 ```
 
-`LOAD_EMAIL` must be a consumer account (staff are refused there). Watch memory with `docker stats`
-alongside: Argon2 uses 100 MiB per hash. Each run records a few failures from your IP, so many runs
-within 15 minutes trip the `ip` limit and valid logins fail: wait, or delete the `login_failures`
-rows. CI runs `login.js` against the built image on every PR.
+`LOAD_EMAIL` must be a confirmed consumer account (staff and unconfirmed emails are refused there).
+Every `check()` must pass, or the run fails. Watch memory with `docker stats` alongside: Argon2 uses
+100 MiB per hash. Each run records a few failures from your IP, so many runs within 15 minutes trip
+the `ip` limit and valid logins fail: wait, or delete the `login_failures` rows. CI runs `login.js`
+against the built image on every PR.
 
 ## CI
 
@@ -345,8 +367,9 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ```
 config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
-users/     custom user model (email login, no username), manager, admin, signup, email verification,
-           password reset, login/logout, session timeouts, login throttling, auth event logging
+users/     custom user model (email login, no username), manager, admin, signup, email verification
+           and resend, invites, password reset, login/logout, session timeouts, login throttling,
+           auth event logging
 templates/ shared layout (base.html), partials, email layouts and the home page
 static/    CSS, fonts, logos (self-hosted, with licences)
 tests/     mirrors the source tree

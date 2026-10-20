@@ -67,11 +67,11 @@ def test_request_reset_logs_when_email_cannot_be_queued(
     assert (line["level"], line["user_id"]) == ("error", consumer_user.pk)
 
 
-def test_complete_reset_verifies_email(consumer_user: User) -> None:
-    PasswordResetService().complete_reset(consumer_user, "198.51.100.1")
+def test_complete_reset_verifies_email(unverified_consumer_user: User) -> None:
+    PasswordResetService().complete_reset(unverified_consumer_user, "198.51.100.1")
 
-    consumer_user.refresh_from_db()
-    assert consumer_user.is_email_verified
+    unverified_consumer_user.refresh_from_db()
+    assert unverified_consumer_user.is_email_verified
 
 
 def test_complete_reset_clears_own_failures_only(consumer_user: User) -> None:
