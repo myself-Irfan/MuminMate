@@ -8,10 +8,18 @@ from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission
 from django.test import Client
 from django.utils import timezone
+from pytest_django import DjangoCaptureOnCommitCallbacks
 
 from users.admin import UserAdmin
 from users.models import User
-from users.services.user_service import UserService
+from users.services.invite_service import InviteService
+
+
+@pytest.fixture
+def invite_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr("users.services.invite_service.send_invite_email.delay", delay)
+    return delay
 
 
 @pytest.fixture
@@ -39,15 +47,26 @@ def test_add_invites_user_without_password(admin_client: Client) -> None:
     assert not user.is_staff
 
 
-def test_add_creates_user_through_user_service(
+def test_add_creates_user_through_invite_service(
     admin_client: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    create = Mock(wraps=UserService().create)
-    monkeypatch.setattr("users.admin.UserService.create", create)
+    invite = Mock(wraps=InviteService().invite)
+    monkeypatch.setattr("users.admin.InviteService.invite", invite)
 
     admin_client.post("/admin/users/user/add/", {"email": "Irfan@Example.com"})
 
-    create.assert_called_once_with(email="irfan@example.com", password=None)
+    invite.assert_called_once_with(email="irfan@example.com")
+
+
+def test_add_queues_invite_email(
+    admin_client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    invite_email_delay: Mock,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        admin_client.post("/admin/users/user/add/", {"email": "invited@example.com"})
+
+    invite_email_delay.assert_called_once_with(User.objects.get(email="invited@example.com").pk)
 
 
 def test_add_logs_the_created_user(admin_client: Client) -> None:
@@ -252,17 +271,13 @@ def test_changelist_search_matches_email(
 
 
 def test_changelist_filters_unverified(
-    admin_client: Client, consumer_user: User, password: str
+    admin_client: Client, consumer_user: User, unverified_consumer_user: User
 ) -> None:
-    User.objects.create_user(
-        email="verified@example.com", password=password, email_verified_at=timezone.now()
-    )
-
     response = admin_client.get("/admin/users/user/", {"email_verified_at__isempty": "1"})
 
     assert response.status_code == HTTPStatus.OK
-    assert consumer_user in response.context["cl"].result_list
-    assert not any(user.is_email_verified for user in response.context["cl"].result_list)
+    assert unverified_consumer_user in response.context["cl"].result_list
+    assert consumer_user not in response.context["cl"].result_list
 
 
 @pytest.mark.parametrize(("email_verified_at", "verified"), [(None, False), (timezone.now(), True)])
@@ -291,3 +306,53 @@ def test_changelist_redirects_to_login_when_not_staff(client: Client, consumer_u
 
     assert response.status_code == HTTPStatus.FOUND
     assert response["Location"].startswith("/admin/login/")
+
+
+def resend_invite(client: Client, *users: User) -> None:
+    client.post(
+        "/admin/users/user/",
+        {"action": "resend_invite", "_selected_action": [user.pk for user in users]},
+    )
+
+
+def test_resend_invite_queues_only_for_users_without_password(
+    admin_client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    invite_email_delay: Mock,
+    invited_user: User,
+    consumer_user: User,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        resend_invite(admin_client, invited_user, consumer_user)
+
+    invite_email_delay.assert_called_once_with(invited_user.pk)
+
+
+def test_resend_invite_reaches_invited_staff_when_superuser(
+    admin_client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    invite_email_delay: Mock,
+    invited_user: User,
+) -> None:
+    User.objects.filter(pk=invited_user.pk).update(is_staff=True)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resend_invite(admin_client, invited_user)
+
+    invite_email_delay.assert_called_once_with(invited_user.pk)
+
+
+def test_resend_invite_skips_invited_staff_when_staff(
+    staff_client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    invite_email_delay: Mock,
+    invited_user: User,
+) -> None:
+    invited_staff = User.objects.create_user(
+        email="invited-staff@example.com", password=None, is_staff=True
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resend_invite(staff_client, invited_staff, invited_user)
+
+    invite_email_delay.assert_called_once_with(invited_user.pk)

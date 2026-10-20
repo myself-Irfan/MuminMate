@@ -5,6 +5,7 @@ from collections.abc import Iterator
 import pytest
 from django.conf import settings as django_settings
 from django.contrib.auth.models import Permission
+from django.utils import timezone
 from pytest_django import Settings
 
 from config.env import LogSettings
@@ -28,7 +29,14 @@ def password() -> str:
 
 @pytest.fixture
 def consumer_user(db: None, password: str) -> User:
-    return User.objects.create_user(email="irfan@example.com", password=password)
+    return User.objects.create_user(
+        email="irfan@example.com", password=password, email_verified_at=timezone.now()
+    )
+
+
+@pytest.fixture
+def unverified_consumer_user(db: None, password: str) -> User:
+    return User.objects.create_user(email="unverified@example.com", password=password)
 
 
 @pytest.fixture

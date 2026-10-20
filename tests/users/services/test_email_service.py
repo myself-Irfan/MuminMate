@@ -8,6 +8,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
 from django.core.mail import EmailMultiAlternatives
 from django.test import Client
+from django.utils import timezone
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from pytest_django import Settings
@@ -44,17 +45,17 @@ def test_signup_email_sends_verify_link(
 
 
 def test_signup_email_link_verifies_user(
-    client: Client, consumer_user: User, public_url: str
+    client: Client, unverified_consumer_user: User, public_url: str
 ) -> None:
-    EmailService().send_signup_email(consumer_user.pk)
+    EmailService().send_signup_email(unverified_consumer_user.pk)
     [path] = re.findall(
         rf"{re.escape(public_url)}(/accounts/verify/[\w-]+/[\w-]+/)", str(mail.outbox[0].body)
     )
 
     client.post(path)
 
-    consumer_user.refresh_from_db()
-    assert consumer_user.is_email_verified
+    unverified_consumer_user.refresh_from_db()
+    assert unverified_consumer_user.is_email_verified
 
 
 @pytest.mark.parametrize(
@@ -94,6 +95,64 @@ def test_signup_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
 
     assert mail.outbox == []
     [line] = events(json_logs, "signup_email_skipped")
+    assert line["user_id"] == 999_999
+
+
+def test_already_verified_email_sends_login_link(consumer_user: User, public_url: str) -> None:
+    EmailService().send_already_verified_email(consumer_user.pk)
+
+    [sent] = mail.outbox
+    assert isinstance(sent, EmailMultiAlternatives)
+    assert sent.to == [consumer_user.email]
+    assert sent.subject == "Your MuminMate email is already confirmed"
+    assert f"{public_url}/accounts/login/" in sent.body
+    [(html, _)] = sent.alternatives
+    assert isinstance(html, str)
+    assert f"{public_url}/accounts/login/" in html
+
+
+# The account may have changed since the resend was requested.
+def test_already_verified_email_skipped_when_user_unverified(
+    json_logs: io.StringIO, unverified_consumer_user: User
+) -> None:
+    EmailService().send_already_verified_email(unverified_consumer_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "already_verified_email_skipped")
+    assert (line["level"], line["user_id"]) == ("info", unverified_consumer_user.pk)
+
+
+def test_already_verified_email_skipped_when_user_inactive(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    consumer_user.is_active = False
+    consumer_user.save()
+
+    EmailService().send_already_verified_email(consumer_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "already_verified_email_skipped")
+    assert line["user_id"] == consumer_user.pk
+
+
+def test_already_verified_email_skipped_when_user_privileged(
+    json_logs: io.StringIO, privileged_user: User
+) -> None:
+    User.objects.filter(pk=privileged_user.pk).update(email_verified_at=timezone.now())
+
+    EmailService().send_already_verified_email(privileged_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "already_verified_email_skipped")
+    assert line["user_id"] == privileged_user.pk
+
+
+@pytest.mark.django_db
+def test_already_verified_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_already_verified_email(999_999)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "already_verified_email_skipped")
     assert line["user_id"] == 999_999
 
 
@@ -173,6 +232,78 @@ def test_password_reset_email_skipped_when_user_deleted(json_logs: io.StringIO) 
 
     assert mail.outbox == []
     [line] = events(json_logs, "password_reset_email_skipped")
+    assert line["user_id"] == 999_999
+
+
+def test_invite_email_sends_set_password_link(invited_user: User, public_url: str) -> None:
+    EmailService().send_invite_email(invited_user.pk)
+
+    [sent] = mail.outbox
+    assert isinstance(sent, EmailMultiAlternatives)
+    assert sent.to == [invited_user.email]
+    assert sent.subject == "You're invited to MuminMate"
+    [link] = re.findall(rf"{re.escape(public_url)}/accounts/invite/[\w-]+/[\w-]+/", str(sent.body))
+    [(html, _)] = sent.alternatives
+    assert isinstance(html, str)
+    assert link in html
+
+
+def test_invite_email_token_valid_for_user(invited_user: User, public_url: str) -> None:
+    EmailService().send_invite_email(invited_user.pk)
+    [(uidb64, token)] = re.findall(r"/accounts/invite/([\w-]+)/([\w-]+)/", str(mail.outbox[0].body))
+
+    assert force_str(urlsafe_base64_decode(uidb64)) == str(invited_user.pk)
+    assert default_token_generator.check_token(invited_user, token)
+
+
+def test_invite_email_states_link_expiry(settings: Settings, invited_user: User) -> None:
+    settings.PASSWORD_RESET_TIMEOUT = 600
+
+    EmailService().send_invite_email(invited_user.pk)
+
+    [sent] = mail.outbox
+    assert "expires in 10\xa0minutes" in sent.body
+
+
+# Role-free: staff are invited the same way.
+def test_invite_email_sent_to_invited_staff(invited_user: User) -> None:
+    User.objects.filter(pk=invited_user.pk).update(is_staff=True)
+
+    EmailService().send_invite_email(invited_user.pk)
+
+    [sent] = mail.outbox
+    assert sent.to == [invited_user.email]
+
+
+def test_invite_email_skipped_when_password_set(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    EmailService().send_invite_email(consumer_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "invite_email_skipped")
+    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
+
+
+def test_invite_email_skipped_when_user_inactive(
+    json_logs: io.StringIO, invited_user: User
+) -> None:
+    invited_user.is_active = False
+    invited_user.save()
+
+    EmailService().send_invite_email(invited_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "invite_email_skipped")
+    assert line["user_id"] == invited_user.pk
+
+
+@pytest.mark.django_db
+def test_invite_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_invite_email(999_999)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "invite_email_skipped")
     assert line["user_id"] == 999_999
 
 

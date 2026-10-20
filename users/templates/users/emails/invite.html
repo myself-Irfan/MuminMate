@@ -1,0 +1,10 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+  <p style="margin:0;">You&rsquo;ve been invited to MuminMate. Choose a password to set up your account.</p>
+  {% include "emails/partials/button.html" with url=invite_url label="Set my password" %}
+  <p style="margin:0 0 8px; font-size:14px; color:#686c64;">This link expires in {{ expiry }} and works once.</p>
+  {% include "emails/partials/fallback_link.html" with url=invite_url %}
+{% endblock %}
+
+{% block footer %}If you weren&rsquo;t expecting this, ignore this email; no account is active until a password is set.{% endblock %}

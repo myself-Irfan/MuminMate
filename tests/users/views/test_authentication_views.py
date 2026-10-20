@@ -3,7 +3,7 @@ from http import HTTPStatus
 import pytest
 from django.contrib.auth import SESSION_KEY
 from django.test import Client
-from pytest_django.asserts import assertContains
+from pytest_django.asserts import assertContains, assertNotContains
 
 from users.models import User
 
@@ -77,6 +77,28 @@ def test_login_fails_with_same_error(client: Client, credentials: dict[str, str]
     errors = response.context["form"].non_field_errors().as_data()
     assert [error.code for error in errors] == ["invalid_login"]
     assert SESSION_KEY not in client.session
+
+
+def test_login_refused_when_unverified_links_to_resend(
+    client: Client, unverified_consumer_user: User, password: str
+) -> None:
+    response = client.post(
+        "/accounts/login/", {"username": unverified_consumer_user.email, "password": password}
+    )
+
+    assertContains(response, "Confirm your email to log in.")
+    assertContains(response, 'href="/accounts/verify/resend/"')
+    assert SESSION_KEY not in client.session
+
+
+@pytest.mark.usefixtures("consumer_user")
+def test_login_failure_offers_no_resend_link(client: Client) -> None:
+    response = client.post(
+        "/accounts/login/",
+        {"username": "irfan@example.com", "password": "wrong-placeholder-password"},
+    )
+
+    assertNotContains(response, 'href="/accounts/verify/resend/"')
 
 
 def test_login_ignores_next_on_other_host(client: Client, login_payload: dict[str, str]) -> None:

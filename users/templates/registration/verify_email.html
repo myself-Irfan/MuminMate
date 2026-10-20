@@ -1,16 +1,12 @@
-{% extends "base.html" %}
+{% extends "registration/base_card.html" %}
 
 {% block title %}Confirm your email - MuminMate{% endblock %}
 
-{% block content %}
-  <article class="card">
-    {% include "users/partials/greeting.html" %}
-    {% include "partials/divider.html" %}
-    <h1>Confirm your email</h1>
-    <p>Confirm this address to finish setting up your account.</p>
-    <form method="post">
-      {% csrf_token %}
-      <button type="submit">Confirm my email</button>
-    </form>
-  </article>
+{% block card %}
+  <h1>Confirm your email</h1>
+  <p>Confirm this address to finish setting up your account.</p>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit">Confirm my email</button>
+  </form>
 {% endblock %}

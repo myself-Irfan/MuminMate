@@ -1,13 +1,9 @@
-{% extends "base.html" %}
+{% extends "registration/base_card.html" %}
 
 {% block title %}Password changed - MuminMate{% endblock %}
 
-{% block content %}
-  <article class="card">
-    {% include "users/partials/greeting.html" %}
-    {% include "partials/divider.html" %}
-    <h1>Your password is changed</h1>
-    <p>Log in with your new password. Any other devices signed in to your account have been logged out.</p>
-    <p class="note"><a href="{% url 'login' %}">Log in</a></p>
-  </article>
+{% block card %}
+  <h1>Your password is changed</h1>
+  <p>Log in with your new password. Any other devices signed in to your account have been logged out.</p>
+  <p class="note"><a href="{% url 'login' %}">Log in</a></p>
 {% endblock %}

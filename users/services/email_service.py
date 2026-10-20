@@ -1,5 +1,6 @@
 import structlog
 from django.conf import settings
+from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -32,9 +33,33 @@ class EmailService:
             },
         )
 
+    def send_already_verified_email(self, user_id: int) -> None:
+        # The resend page's rules again: the user may have changed since the request.
+        try:
+            user = User.objects.get(
+                pk=user_id,
+                is_active=True,
+                email_verified_at__isnull=False,
+                is_staff=False,
+                is_superuser=False,
+            )
+        except User.DoesNotExist:
+            logger.info("already_verified_email_skipped", user_id=user_id)
+            return
+        self._send(
+            user=user,
+            subject="Your MuminMate email is already confirmed",
+            template_name="users/emails/already_verified",
+            context={"login_url": f"{settings.PUBLIC_URL}{reverse('login')}"},
+        )
+
     def send_password_reset_email(self, user_id: int) -> None:
-        user = self._get_reset_eligible_user(user_id)
-        if user is None:
+        # The reset form's rules again: the user may have changed since the request.
+        try:
+            user = User.objects.exclude(password__startswith=UNUSABLE_PASSWORD_PREFIX).get(
+                pk=user_id, is_active=True, is_staff=False, is_superuser=False
+            )
+        except User.DoesNotExist:
             logger.info("password_reset_email_skipped", user_id=user_id)
             return
         token = default_token_generator.make_token(user)
@@ -48,15 +73,25 @@ class EmailService:
             },
         )
 
-    # The reset form's rules again: the user may have changed since the request.
-    def _get_reset_eligible_user(self, user_id: int) -> User | None:
+    # Role-free: any account that never set a password, staff included.
+    def send_invite_email(self, user_id: int) -> None:
         try:
-            user = User.objects.get(pk=user_id, is_active=True)
+            user = User.objects.get(
+                pk=user_id, is_active=True, password__startswith=UNUSABLE_PASSWORD_PREFIX
+            )
         except User.DoesNotExist:
-            return None
-        if not user.has_usable_password() or user.is_privileged:
-            return None
-        return user
+            logger.info("invite_email_skipped", user_id=user_id)
+            return
+        token = default_token_generator.make_token(user)
+        self._send(
+            user=user,
+            subject="You're invited to MuminMate",
+            template_name="users/emails/invite",
+            context={
+                "invite_url": self._build_link("invite_confirm", user, token),
+                "expiry": describe_token_lifetime(),
+            },
+        )
 
     def _build_link(self, url_name: str, user: User, token: str) -> str:
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))

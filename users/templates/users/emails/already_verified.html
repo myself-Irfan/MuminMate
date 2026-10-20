@@ -1,0 +1,9 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+  <p style="margin:0;">Someone asked for a new confirmation link for your MuminMate account, but your email is already confirmed.</p>
+  {% include "emails/partials/button.html" with url=login_url label="Log in" %}
+  {% include "emails/partials/fallback_link.html" with url=login_url %}
+{% endblock %}
+
+{% block footer %}If you didn't ask for this, ignore this email; nothing has changed.{% endblock %}

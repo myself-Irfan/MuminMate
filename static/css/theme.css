@@ -20,7 +20,6 @@
   --mm-logo: url("../img/logos/rub-el-hizb.svg");
   --mm-font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
   --mm-card-width: 24rem;
-  --pico-font-family: var(--pico-font-family-sans-serif);
   --pico-border-radius: 0.375rem;
   /* Pico grows the root font to 131% on wide screens; cap it so cards stay compact. */
   --pico-font-size: 100%;
@@ -50,7 +49,6 @@
   --pico-primary-focus: rgba(14, 92, 74, 0.25);
   --pico-primary-inverse: #fffdf8;
   --pico-h1-color: #12382f;
-  --pico-h2-color: #12382f;
   --pico-card-background-color: #fffdf8;
   --pico-form-element-background-color: #fffdf8;
   --pico-form-element-active-background-color: #ffffff;
@@ -76,7 +74,6 @@
     --pico-primary-focus: rgba(124, 198, 168, 0.3);
     --pico-primary-inverse: #0c1613;
     --pico-h1-color: #f3ecda;
-    --pico-h2-color: #f3ecda;
     --pico-card-background-color: #111e1a;
     --pico-form-element-background-color: #0f1b17;
     --pico-form-element-active-background-color: #13221d;
@@ -109,9 +106,7 @@ body::before {
   mask: url("../img/star-lattice.svg") 0 0 / 96px 96px repeat;
 }
 
-h1,
-h2,
-h3 {
+h1 {
   font-family: var(--mm-font-display);
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -260,10 +255,6 @@ nav [type="submit"]:focus-visible {
   border-radius: var(--pico-border-radius);
   background-color: var(--pico-card-background-color);
   font-size: 0.875rem;
-}
-
-.messages .error {
-  border-left-color: var(--pico-del-color);
 }
 
 /* Django's field errors, styled like Pico's hint under an input. */

@@ -1,13 +1,9 @@
-{% extends "base.html" %}
+{% extends "registration/base_card.html" %}
 
 {% block title %}Check your email - MuminMate{% endblock %}
 
-{% block content %}
-  <article class="card">
-    {% include "users/partials/greeting.html" %}
-    {% include "partials/divider.html" %}
-    <h1>Check your email</h1>
-    <p>If an account exists for that email, we&rsquo;ve sent a link to choose a new password.</p>
-    <p class="note">No email? Check your spam folder, or <a href="{% url 'password_reset' %}">try again</a>.</p>
-  </article>
+{% block card %}
+  <h1>Check your email</h1>
+  <p>If an account exists for that email, we&rsquo;ve sent a link to choose a new password.</p>
+  <p class="note">No email? Check your spam folder, or <a href="{% url 'password_reset' %}">try again</a>.</p>
 {% endblock %}

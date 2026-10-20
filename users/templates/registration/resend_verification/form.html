@@ -1,0 +1,14 @@
+{% extends "registration/base_card.html" %}
+
+{% block title %}Send a new confirmation link - MuminMate{% endblock %}
+
+{% block card %}
+  <h1>Confirm your email</h1>
+  <p>Enter your account&rsquo;s email and we&rsquo;ll send you a new confirmation link.</p>
+  <form method="post">
+    {% csrf_token %}
+    {{ form }}
+    <button type="submit">Send new link</button>
+  </form>
+  <p class="note">Already confirmed? <a href="{% url 'login' %}">Log in</a>.</p>
+{% endblock %}
