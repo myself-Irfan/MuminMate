@@ -4,7 +4,6 @@ from smtplib import SMTPRecipientsRefused
 from unittest.mock import Mock
 
 import pytest
-from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
 from django.core.mail import EmailMultiAlternatives
 from django.test import Client
@@ -15,6 +14,7 @@ from pytest_django import Settings
 from tests.logging_support import events
 from users.models import User
 from users.services.email_service import EmailService
+from users.tokens import ConsumerPasswordResetTokenGenerator, InviteTokenGenerator
 
 
 @pytest.fixture
@@ -130,7 +130,7 @@ def test_password_reset_email_token_valid_for_user(consumer_user: User, public_u
     )
 
     assert force_str(urlsafe_base64_decode(uidb64)) == str(consumer_user.pk)
-    assert default_token_generator.check_token(consumer_user, token)
+    assert ConsumerPasswordResetTokenGenerator().check_token(consumer_user, token)
 
 
 def test_password_reset_email_states_link_expiry(settings: Settings, consumer_user: User) -> None:
@@ -205,7 +205,14 @@ def test_invite_email_token_valid_for_user(invited_user: User, public_url: str) 
     [(uidb64, token)] = re.findall(r"/accounts/invite/([\w-]+)/([\w-]+)/", str(mail.outbox[0].body))
 
     assert force_str(urlsafe_base64_decode(uidb64)) == str(invited_user.pk)
-    assert default_token_generator.check_token(invited_user, token)
+    assert InviteTokenGenerator().check_token(invited_user, token)
+
+
+def test_invite_email_token_not_a_password_reset_token(invited_user: User) -> None:
+    EmailService().send_invite_email(invited_user.pk)
+    [token] = re.findall(r"/accounts/invite/[\w-]+/([\w-]+)/", str(mail.outbox[0].body))
+
+    assert not ConsumerPasswordResetTokenGenerator().check_token(invited_user, token)
 
 
 def test_invite_email_states_link_expiry(settings: Settings, invited_user: User) -> None:

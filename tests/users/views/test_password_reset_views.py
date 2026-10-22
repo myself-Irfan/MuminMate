@@ -140,6 +140,30 @@ def test_password_reset_link_works_once(
     assertContains(response, "This reset link is invalid or has expired")
 
 
+@pytest.mark.parametrize(
+    "change",
+    [{"is_active": False}, {"is_staff": True}, {"is_staff": True, "is_superuser": True}],
+    ids=["deactivated", "made_staff", "made_superuser"],
+)
+def test_password_reset_link_refused_when_user_no_longer_eligible(
+    client: Client,
+    consumer_user: User,
+    password: str,
+    set_password_path: str,
+    change: dict[str, bool],
+) -> None:
+    User.objects.filter(pk=consumer_user.pk).update(**change)
+    new_password = password + "-new"
+
+    response = client.post(
+        set_password_path, {"new_password1": new_password, "new_password2": new_password}
+    )
+
+    assertContains(response, "This reset link is invalid or has expired")
+    consumer_user.refresh_from_db()
+    assert consumer_user.check_password(password)
+
+
 def test_password_reset_keeps_old_password_when_completion_fails(
     monkeypatch: pytest.MonkeyPatch,
     client: Client,

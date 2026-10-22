@@ -1,7 +1,6 @@
 import io
 
 import pytest
-from django.contrib.auth.tokens import default_token_generator
 from django.test import Client
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -9,12 +8,13 @@ from pytest_django.asserts import assertContains, assertTemplateUsed
 
 from tests.logging_support import events
 from users.models import User
+from users.tokens import ConsumerPasswordResetTokenGenerator, InviteTokenGenerator
 
 
 @pytest.fixture
 def invite_path(invited_user: User) -> str:
     uidb64 = urlsafe_base64_encode(force_bytes(invited_user.pk))
-    token = default_token_generator.make_token(invited_user)
+    token = InviteTokenGenerator().make_token(invited_user)
     return f"/accounts/invite/{uidb64}/{token}/"
 
 
@@ -40,6 +40,17 @@ def test_invite_page_shows_invalid_when_token_wrong(client: Client, invited_user
     response = client.get(f"/accounts/invite/{uidb64}/wrong-token/")
 
     assertTemplateUsed(response, "registration/invite/confirm.html")
+    assertContains(response, "This invite link is invalid or has expired")
+
+
+def test_invite_page_shows_invalid_for_password_reset_token(
+    client: Client, consumer_user: User
+) -> None:
+    uidb64 = urlsafe_base64_encode(force_bytes(consumer_user.pk))
+    token = ConsumerPasswordResetTokenGenerator().make_token(consumer_user)
+
+    response = client.get(f"/accounts/invite/{uidb64}/{token}/")
+
     assertContains(response, "This invite link is invalid or has expired")
 
 
@@ -70,6 +81,21 @@ def test_invite_link_works_once(client: Client, invite_path: str, password: str)
     response = client.get(invite_path, follow=True)
 
     assertContains(response, "This invite link is invalid or has expired")
+
+
+def test_invite_refused_when_user_deactivated(
+    client: Client, invited_user: User, invite_path: str, password: str
+) -> None:
+    set_password_path = client.get(invite_path)["Location"]
+    User.objects.filter(pk=invited_user.pk).update(is_active=False)
+
+    response = client.post(
+        set_password_path, {"new_password1": password, "new_password2": password}
+    )
+
+    assertContains(response, "This invite link is invalid or has expired")
+    invited_user.refresh_from_db()
+    assert not invited_user.has_usable_password()
 
 
 def test_invite_confirmation_shown_after_password_set(

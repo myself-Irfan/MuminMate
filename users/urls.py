@@ -2,7 +2,7 @@ from django.urls import path
 
 from users.views.authentication_views import ConsumerLoginView, ConsumerLogoutView
 from users.views.email_verification_views import VerifyEmailView
-from users.views.invite_view import ConsumerInviteConfirmView
+from users.views.invite_views import ConsumerInviteConfirmView
 from users.views.password_reset_views import (
     ConsumerPasswordResetCompleteView,
     ConsumerPasswordResetConfirmView,

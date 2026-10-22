@@ -8,6 +8,7 @@ from django.contrib.auth import logout
 from django.contrib.auth.middleware import LoginRequiredMiddleware
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect
+from django.utils.cache import add_never_cache_headers
 
 from users.enums import SessionKey
 from users.models import User
@@ -41,6 +42,18 @@ class SessionTimeoutMiddleware:
                 session_age_seconds=session_age,
             )
             logout(request)
+
+
+# After logout, the back button must not show a page from the logged-in session.
+class AuthenticatedNoStoreMiddleware:
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        if request.user.is_authenticated:
+            add_never_cache_headers(response)
+        return response
 
 
 class ConsumerLoginRequiredMiddleware(LoginRequiredMiddleware):

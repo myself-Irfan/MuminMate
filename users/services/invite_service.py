@@ -14,8 +14,8 @@ logger = structlog.get_logger(__name__)
 
 
 class InviteService:
-    def invite(self, *, email: str) -> User:
-        user = UserService().create(email=email, password=None)
+    def invite(self, *, email: str, is_staff: bool) -> User:
+        user = UserService().create(email=email, password=None, is_staff=is_staff)
         logger.info("user_invited", user_id=user.pk)
         transaction.on_commit(partial(self._queue_invite_email, user.pk))
         return user

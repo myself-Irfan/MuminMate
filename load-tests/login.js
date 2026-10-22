@@ -24,7 +24,7 @@ function requiredEnv(name) {
   return value;
 }
 
-// Sequential: sync views share one thread, so refusals would queue behind hashes.
+// Sequential: concurrent Argon2 hashes saturate the CPU and would slow the refusals measured.
 function scenario(name, startTime) {
   return {
     executor: "constant-arrival-rate",

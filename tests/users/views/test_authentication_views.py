@@ -25,6 +25,13 @@ def verification_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
 
 
 @pytest.mark.django_db
+def test_login_page_title_names_page_then_site(client: Client) -> None:
+    response = client.get("/accounts/login/")
+
+    assertContains(response, "<title>Log in - MuminMate</title>", html=True)
+
+
+@pytest.mark.django_db
 def test_login_page_email_field_is_email_type(client: Client) -> None:
     response = client.get("/accounts/login/")
 

@@ -29,7 +29,7 @@ class UserAdmin(auth_admin.UserAdmin[User]):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email",),
+                "fields": ("email", "is_staff"),
             },
         ),
     )
@@ -53,7 +53,7 @@ class UserAdmin(auth_admin.UserAdmin[User]):
         if change:
             super().save_model(request, obj, form, change)
             return
-        created = InviteService().invite(email=obj.email)
+        created = InviteService().invite(email=obj.email, is_staff=obj.is_staff)
         # The admin logs and redirects with obj: give it the new pk.
         obj.pk = created.pk
 

@@ -4,10 +4,12 @@ import structlog
 from django.http import HttpRequest
 from django.urls import Resolver404, resolve
 
+from core.client_ip import get_client_ip
+
 
 # django-structlog's own IP comes from ipware, which trusts the client's X-Forwarded-For.
 def bind_client_ip(sender: object, request: HttpRequest, **kwargs: Any) -> None:
-    structlog.contextvars.bind_contextvars(ip=request.META.get("REMOTE_ADDR"))
+    structlog.contextvars.bind_contextvars(ip=get_client_ip(request))
 
 
 # Read by drop_successful_probes.

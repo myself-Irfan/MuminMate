@@ -55,6 +55,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     def is_privileged(self) -> bool:
         return self.is_staff or self.is_superuser
 
+    @property
+    def can_reset_password(self) -> bool:
+        return self.is_active and not self.is_privileged and self.has_usable_password()
+
+    @property
+    def is_invite_pending(self) -> bool:
+        return self.is_active and not self.has_usable_password()
+
+    @property
+    def is_verification_pending(self) -> bool:
+        return self.is_active and not self.is_email_verified
+
 
 class ThrottleEvent(models.Model):
     scope = models.CharField(max_length=32, choices=ThrottleScope)

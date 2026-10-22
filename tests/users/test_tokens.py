@@ -7,7 +7,11 @@ from django.utils import timezone
 from pytest_django import Settings
 
 from users.models import User
-from users.tokens import EmailVerificationTokenGenerator
+from users.tokens import (
+    ConsumerPasswordResetTokenGenerator,
+    EmailVerificationTokenGenerator,
+    InviteTokenGenerator,
+)
 
 
 @pytest.fixture
@@ -107,3 +111,39 @@ def test_token_expires_after_password_reset_timeout(
     )
 
     assert generator.check_token(consumer_user, token) is valid
+
+
+def test_consumer_password_reset_key_salt_differs_from_django() -> None:
+    assert ConsumerPasswordResetTokenGenerator.key_salt != PasswordResetTokenGenerator.key_salt
+
+
+def test_consumer_password_reset_token_valid_for_its_user(consumer_user: User) -> None:
+    generator = ConsumerPasswordResetTokenGenerator()
+    token = generator.make_token(consumer_user)
+
+    assert generator.check_token(consumer_user, token)
+
+
+@pytest.mark.parametrize(
+    "change", [{"is_active": False}, {"is_staff": True}], ids=["deactivated", "made_staff"]
+)
+def test_consumer_password_reset_token_invalid_when_account_changed(
+    consumer_user: User, change: dict[str, bool]
+) -> None:
+    generator = ConsumerPasswordResetTokenGenerator()
+    token = generator.make_token(consumer_user)
+
+    User.objects.filter(pk=consumer_user.pk).update(**change)
+    consumer_user.refresh_from_db()
+
+    assert not generator.check_token(consumer_user, token)
+
+
+def test_invite_token_invalid_when_account_deactivated(invited_user: User) -> None:
+    generator = InviteTokenGenerator()
+    token = generator.make_token(invited_user)
+
+    User.objects.filter(pk=invited_user.pk).update(is_active=False)
+    invited_user.refresh_from_db()
+
+    assert not generator.check_token(invited_user, token)

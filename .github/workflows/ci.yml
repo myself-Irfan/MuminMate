@@ -35,12 +35,13 @@ env:
   DJANGO_HSTS_SECONDS: "0"
   DJANGO_SESSION_IDLE_MINUTES: "180"
   DJANGO_SESSION_ABSOLUTE_HOURS: "12"
-  DJANGO_PASSWORD_RESET_TIMEOUT_HOURS: "72"
+  DJANGO_EMAIL_LINK_TIMEOUT_HOURS: "72"
   DJANGO_LOGGING: '{"level":"INFO","format":"json"}'
   DJANGO_THROTTLE_LIMITS: '{"login":{"email_ip_max_events":5,"email_ip_window_seconds":900,"ip_max_events":100,"ip_window_seconds":900,"email_max_events":20,"email_window_seconds":3600,"email_backoff_seconds":60},"password_reset":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300,"ip_max_events":100,"ip_window_seconds":3600},"signup":{"ip_max_events":50,"ip_window_seconds":3600},"verification_email":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300}}'
   DJANGO_EMAIL: '{"host":"localhost","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>"}'
   DJANGO_EMAIL_HOST_USER: ""
   DJANGO_EMAIL_HOST_PASSWORD: ""
+  FORWARDED_ALLOW_IPS: "127.0.0.1,::1"
 
 jobs:
   lint:
@@ -139,7 +140,7 @@ jobs:
       # The settings production runs with, checked in the image that ships.
       - name: Deploy Check
         run: |
-          docker run --rm --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') \
+          docker run --rm --env-file <(env | grep -E '^(DJANGO_|POSTGRES_|RABBITMQ_|FORWARDED_ALLOW_IPS=)') \
             --env DJANGO_HTTPS=true --env DJANGO_PUBLIC_URL=https://localhost \
             --env DJANGO_HSTS_SECONDS=3600 \
             --env DJANGO_SECRET_KEY=ci-deploy-check-only-0123456789abcdefghijklmnopqrstuvwxyz \
@@ -154,16 +155,16 @@ jobs:
       - &start-web
         name: Start Web
         run: |
-          docker run --rm --network host --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') \
+          docker run --rm --network host --env-file <(env | grep -E '^(DJANGO_|POSTGRES_|RABBITMQ_|FORWARDED_ALLOW_IPS=)') \
             muminmate python manage.py migrate --noinput
           docker run --detach --name web --network host \
-            --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') muminmate
+            --env-file <(env | grep -E '^(DJANGO_|POSTGRES_|RABBITMQ_|FORWARDED_ALLOW_IPS=)') muminmate
           curl --fail --retry 10 --retry-delay 1 --retry-all-errors \
             http://localhost:8000/api/health/ready
       - name: Smoke Test Worker
         run: |
           docker run --detach --name worker --network host \
-            --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') \
+            --env-file <(env | grep -E '^(DJANGO_|POSTGRES_|RABBITMQ_|FORWARDED_ALLOW_IPS=)') \
             muminmate celery -A config --quiet worker -Q default,email -n default@%h --concurrency 2
           for _ in $(seq 10); do
             docker exec worker celery -A config inspect ping --timeout 5 && exit 0

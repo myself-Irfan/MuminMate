@@ -21,10 +21,21 @@ def invite_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
 @pytest.mark.django_db
 @pytest.mark.usefixtures("invite_email_delay")
 def test_invite_creates_user_without_password() -> None:
-    user = InviteService().invite(email=" Invited@Example.com ")
+    user = InviteService().invite(email=" Invited@Example.com ", is_staff=False)
 
     user.refresh_from_db()
     assert user.email == "invited@example.com"
+    assert not user.has_usable_password()
+    assert not user.is_staff
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("invite_email_delay")
+def test_invite_creates_staff_when_asked() -> None:
+    user = InviteService().invite(email="colleague@example.com", is_staff=True)
+
+    user.refresh_from_db()
+    assert user.is_staff
     assert not user.has_usable_password()
 
 
@@ -33,7 +44,7 @@ def test_invite_queues_email_only_after_commit(
     django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks, invite_email_delay: Mock
 ) -> None:
     with django_capture_on_commit_callbacks() as callbacks:
-        InviteService().invite(email="invited@example.com")
+        InviteService().invite(email="invited@example.com", is_staff=False)
 
     assert len(callbacks) == 1
     invite_email_delay.assert_not_called()
@@ -44,7 +55,7 @@ def test_invite_queues_email_for_new_user(
     django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks, invite_email_delay: Mock
 ) -> None:
     with django_capture_on_commit_callbacks(execute=True):
-        user = InviteService().invite(email="invited@example.com")
+        user = InviteService().invite(email="invited@example.com", is_staff=False)
 
     invite_email_delay.assert_called_once_with(user.pk)
 
@@ -52,7 +63,7 @@ def test_invite_queues_email_for_new_user(
 @pytest.mark.django_db
 @pytest.mark.usefixtures("invite_email_delay")
 def test_invite_logs_user_invited(json_logs: io.StringIO) -> None:
-    user = InviteService().invite(email="invited@example.com")
+    user = InviteService().invite(email="invited@example.com", is_staff=False)
 
     [line] = events(json_logs, "user_invited")
     assert (line["level"], line["user_id"]) == ("info", user.pk)
