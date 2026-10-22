@@ -5,7 +5,8 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.utils import timezone
 
-from users.models import LoginFailure, User
+from users.enums import ThrottleScope
+from users.models import ThrottleEvent, User
 
 
 def test_str_returns_email() -> None:
@@ -100,7 +101,19 @@ def test_is_privileged_when_staff_or_superuser(flags: dict[str, bool], privilege
     assert user.is_privileged is privileged
 
 
-def test_login_failure_str_shows_time_and_ip() -> None:
-    failure = LoginFailure(ip="203.0.113.7", failed_at=datetime(2026, 10, 3, 9, 30, tzinfo=UTC))
+def test_throttle_event_str_shows_scope_time_and_ip() -> None:
+    event = ThrottleEvent(
+        scope=ThrottleScope.LOGIN_FAILURE,
+        ip="203.0.113.7",
+        created_at=datetime(2026, 10, 3, 9, 30, tzinfo=UTC),
+    )
 
-    assert str(failure) == "Login failure at 2026-10-03 09:30:00+00:00 from 203.0.113.7"
+    assert str(event) == "Login Failure at 2026-10-03 09:30:00+00:00 from 203.0.113.7"
+
+
+@pytest.mark.django_db
+def test_throttle_event_save_fails_when_scope_unknown() -> None:
+    event = ThrottleEvent(scope="login_falure", email_digest="digest")
+
+    with pytest.raises(IntegrityError, match="throttle_events_scope_valid"):
+        event.save()

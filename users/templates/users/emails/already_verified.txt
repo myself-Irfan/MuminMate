@@ -1,7 +1,0 @@
-{% extends "emails/base.txt" %}
-
-{% block content %}Someone asked for a new confirmation link for your MuminMate account, but your email is already confirmed. Log in here:
-
-{{ login_url }}{% endblock %}
-
-{% block footer %}If you didn't ask for this, ignore this email; nothing has changed.{% endblock %}

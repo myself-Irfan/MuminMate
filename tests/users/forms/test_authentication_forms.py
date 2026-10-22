@@ -20,7 +20,9 @@ def test_consumer_login_form_refuses_unverified_email(
 
     assert not form.is_valid()
     assert form.has_error("__all__", "email_unverified")
-    assert form.non_field_errors() == ["Confirm your email to log in."]
+    assert form.non_field_errors() == [
+        "Confirm your email to log in. Check your inbox for the link."
+    ]
 
 
 def test_consumer_login_refusal_logged_when_email_unverified(

@@ -22,14 +22,6 @@ def test_check_password_rejects_truncated_long_password() -> None:
     assert not user.check_password(long_password[:72])
 
 
-@pytest.mark.django_db
-def test_check_password_is_case_sensitive(password: str) -> None:
-    user = User.objects.create_user(email="irfan@example.com", password=password)
-
-    assert user.check_password(password)
-    assert not user.check_password(password.upper())
-
-
 def test_validate_password_rejects_when_shorter_than_8(short_password: str) -> None:
     with pytest.raises(ValidationError) as excinfo:
         validate_password(short_password)

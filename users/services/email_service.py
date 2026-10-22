@@ -15,12 +15,12 @@ logger = structlog.get_logger(__name__)
 
 
 class EmailService:
-    def send_signup_email(self, user_id: int) -> None:
+    def send_verification_email(self, user_id: int) -> None:
         try:
-            user = User.objects.get(pk=user_id, is_active=True)
+            user = User.objects.get(pk=user_id, is_active=True, email_verified_at__isnull=True)
         except User.DoesNotExist:
-            # Deactivated, or deleted since signup: nothing to tell them.
-            logger.info("signup_email_skipped", user_id=user_id)
+            # Deactivated, deleted or confirmed since queueing: nothing to tell them.
+            logger.info("verification_email_skipped", user_id=user_id)
             return
         token = EmailVerificationTokenGenerator().make_token(user)
         self._send(
@@ -31,26 +31,6 @@ class EmailService:
                 "verify_url": self._build_link("verify_email", user, token),
                 "expiry": describe_token_lifetime(),
             },
-        )
-
-    def send_already_verified_email(self, user_id: int) -> None:
-        # The resend page's rules again: the user may have changed since the request.
-        try:
-            user = User.objects.get(
-                pk=user_id,
-                is_active=True,
-                email_verified_at__isnull=False,
-                is_staff=False,
-                is_superuser=False,
-            )
-        except User.DoesNotExist:
-            logger.info("already_verified_email_skipped", user_id=user_id)
-            return
-        self._send(
-            user=user,
-            subject="Your MuminMate email is already confirmed",
-            template_name="users/emails/already_verified",
-            context={"login_url": f"{settings.PUBLIC_URL}{reverse('login')}"},
         )
 
     def send_password_reset_email(self, user_id: int) -> None:

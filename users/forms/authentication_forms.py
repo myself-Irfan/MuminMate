@@ -25,7 +25,10 @@ class ConsumerAuthenticationForm(auth_forms.AuthenticationForm):
     def _validate_email_verified(self, user: User) -> None:
         if not user.is_email_verified:
             logger.warning("login_refused", reason="email_unverified", user_id=user.pk)
-            raise ValidationError("Confirm your email to log in.", code="email_unverified")
+            raise ValidationError(
+                "Confirm your email to log in. Check your inbox for the link.",
+                code="email_unverified",
+            )
 
 
 class StaffAuthenticationForm(AdminAuthenticationForm):

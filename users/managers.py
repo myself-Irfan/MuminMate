@@ -36,5 +36,7 @@ class UserManager[T: AbstractBaseUser](BaseUserManager[T]):
             raise ValueError("The email must be set.")
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
+        # Field checks only; uniqueness and constraints stay with the db.
+        user.full_clean(validate_unique=False, validate_constraints=False)
         user.save(using=self._db)
         return user

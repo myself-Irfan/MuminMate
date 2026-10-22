@@ -90,7 +90,7 @@ def test_signup_requests_verification_for_new_user(
 
     UserService().signup(email="new@example.com", password=password)
 
-    request_verification.assert_called_once_with(User.objects.get(email="new@example.com").pk)
+    request_verification.assert_called_once_with(User.objects.get(email="new@example.com"))
 
 
 def test_signup_queues_no_email_when_email_taken(
@@ -105,6 +105,13 @@ def test_signup_queues_no_email_when_email_taken(
 
 
 @pytest.mark.django_db
-def test_signup_raises_when_other_constraint_fails(password: str) -> None:
-    with pytest.raises(IntegrityError, match="users_email_ascii"):
-        UserService().signup(email="\u0131rfan@example.com", password=password)
+def test_signup_raises_when_other_integrity_error(
+    monkeypatch: pytest.MonkeyPatch, password: str
+) -> None:
+    monkeypatch.setattr(
+        "users.services.user_service.UserService.create",
+        Mock(side_effect=IntegrityError("other")),
+    )
+
+    with pytest.raises(IntegrityError, match="other"):
+        UserService().signup(email="new@example.com", password=password)

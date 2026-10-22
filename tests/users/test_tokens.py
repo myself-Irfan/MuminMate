@@ -84,16 +84,8 @@ def test_password_reset_token_rejected(
     assert not generator.check_token(consumer_user, reset_token)
 
 
-def test_token_invalid_under_password_reset_key_salt(
-    monkeypatch: pytest.MonkeyPatch,
-    generator: EmailVerificationTokenGenerator,
-    consumer_user: User,
-) -> None:
-    token = generator.make_token(consumer_user)
-
-    monkeypatch.setattr(generator, "key_salt", PasswordResetTokenGenerator.key_salt)
-
-    assert not generator.check_token(consumer_user, token)
+def test_key_salt_differs_from_password_reset() -> None:
+    assert EmailVerificationTokenGenerator.key_salt != PasswordResetTokenGenerator.key_salt
 
 
 @pytest.mark.parametrize(("age_seconds", "valid"), [(600, True), (601, False)])

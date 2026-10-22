@@ -36,7 +36,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_SESSION_ABSOLUTE_HOURS` | Log out this long after login, even if active (`12`); at least the idle value |
 | `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS` | Password reset and email verification links expire after this long (`72`); a change also applies to links already sent |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
-| `DJANGO_LOGIN_LIMITS` | Failed-login limits as one-line JSON (see Login limits below) |
+| `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup and verification email limits as one-line JSON (see Throttling below) |
 | `DJANGO_EMAIL` | Mail server as one-line JSON (see Email below) |
 | `DJANGO_EMAIL_HOST_USER` | Mail server login; empty when it needs none (Mailpit), else set with the password |
 | `DJANGO_EMAIL_HOST_PASSWORD` | Mail server password; empty or set together with the user |
@@ -77,7 +77,6 @@ Every variable is required; the app refuses to start if one is missing.
 | `/accounts/login/` | Consumer login (staff and superuser accounts are refused; they use `/admin/`) |
 | `/accounts/logout/` | Log out (POST only) |
 | `/accounts/signup/` | Create a consumer account (public); always ends on `/accounts/signup/done/` |
-| `/accounts/verify/resend/` | Email a new confirmation link (public); always ends on `/accounts/verify/resend/done/` |
 | `/accounts/password-reset/` | Email a link to choose a new password (public); always ends on `/accounts/password-reset/done/` |
 | `/accounts/invite/<uid>/<token>/` | Set your password from an invite email (public) |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
@@ -120,13 +119,12 @@ after `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`, or when the email changes, and ever
 same page.
 
 A consumer can't log in until the email is confirmed. After a correct password they see "Confirm your
-email to log in." with a link to send a new one; a wrong password still gets the usual error, so the
-message reveals nothing to someone guessing. `/accounts/verify/resend/` gives every email the same
-answer and lets the inbox tell the truth: an unconfirmed account gets a new link, a confirmed one an
-"already confirmed, log in" email, and unknown, inactive or staff emails get nothing. The refused
-login, the invalid-link page and the "check your email" page all link to it.
+email to log in. Check your inbox for the link." and the worker mails a new link (at most as often as
+Throttling allows; the page reads the same either way). A wrong password still gets the usual error,
+so the message reveals nothing to someone guessing, and only someone who knows the password can make
+us send a link. The "check your email" and invalid-link pages send people to log in for a new link.
 
-Signup, password reset and resend aren't rate-limited yet.
+Signups are limited per IP (see Throttling).
 
 Email addresses are ASCII only, everywhere (signup, admin, `createsuperuser`, and a database
 constraint): lookalike letters such as `ı` would otherwise make `ırfan@` a different account from
@@ -146,6 +144,9 @@ session), then asks for the new password. It stops working once used, after
 password logs out the account's other sessions, confirms the email if it wasn't yet (the link proved
 the inbox), and clears that email's failed logins from that IP. It doesn't log the user in.
 
+Requests are limited per email and per IP (see Throttling), whether or not the email has an account,
+so the limit reveals nothing either.
+
 ## Sessions
 
 Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE_MINUTES` without a
@@ -153,34 +154,79 @@ request, and `DJANGO_SESSION_ABSOLUTE_HOURS` after login even if active (logging
 it). Every request saves the session, which restarts the idle timer. With `DJANGO_HTTPS=true` the
 cookies are named `__Host-sessionid` and `__Host-csrftoken`.
 
-## Login limits
+## Throttling
 
-`DJANGO_LOGIN_LIMITS` caps failed logins in sliding windows (seconds). Set it as JSON on one line;
-expanded, the `.env.example` value is:
+`DJANGO_THROTTLE_LIMITS` holds every limit, one key per scope: `login` (failed logins),
+`password_reset`, `signup` and `verification_email` (confirmation links). It's JSON on one line, two
+levels deep: each scope holds flat numbers named `<rule>_max_events` within `<rule>_window_seconds`
+(sliding windows, in seconds). Every value must be a positive integer, a cooldown shorter than its
+window, and unknown or missing keys stop the app at startup.
+
+### Login
+
+Expanded, the `login` part of `.env.example` is:
 
 ```json
 {
-  "email_ip": {"max_failures": 5, "window_seconds": 900},
-  "ip": {"max_failures": 100, "window_seconds": 900},
-  "email": {"max_failures": 20, "window_seconds": 3600, "backoff_seconds": 60}
+  "email_ip_max_events": 5, "email_ip_window_seconds": 900,
+  "ip_max_events": 100, "ip_window_seconds": 900,
+  "email_max_events": 20, "email_window_seconds": 3600, "email_backoff_seconds": 60
 }
 ```
 
-`email_ip` is one email from one IP; `ip` is one IP for any email (loose, since mobile carriers share
-IPs); `email` is one email from any IP, after which it gets one attempt per `backoff_seconds` instead
-of a permanent lock. A targeted attacker spending each attempt from several IPs can still keep an
-account in backoff. Every value must be a positive integer, and unknown or missing keys stop the app
-at startup.
+Here an event is a failed login. `email_ip` is one email from one IP; `ip` is one IP for any email
+(loose, since mobile carriers share IPs); `email` is one email from any IP, after which it gets one
+attempt per `email_backoff_seconds` instead of a permanent lock. A targeted attacker spending each
+attempt from several IPs can still keep an account in backoff.
 
 The limits apply to both logins (`/accounts/login/` and `/admin/`) and to `authenticate()` itself.
 A refused attempt looks like a wrong password, skips the password check and isn't counted, so waiting
 works unless someone keeps guessing. Unknown emails count too. A successful login (or a password reset
 or accepted invite) clears only that email's failures from that IP. IPv6 addresses count per `/64`.
+Each attempt is saved before the password hash and counted with itself, so a burst of parallel
+guesses can't all pass during the slow hash; it stays as the failure unless the login succeeds.
 
-Each failure stores a keyed hash of the email (never the email itself), the IP and the time. The hash is
-keyed with `DJANGO_SECRET_KEY`, so rotating the key resets every email's failure count. IPs are
-personal data, so `python manage.py deleteexpiredloginfailures` deletes rows older than the longest
-window; in production run it as a scheduled job (a Kubernetes CronJob, every 15 minutes).
+### Pages that send mail
+
+Here an event is a request that passed the limit:
+
+```json
+{
+  "password_reset": {
+    "email_max_events": 3, "email_window_seconds": 3600, "email_cooldown_seconds": 300,
+    "ip_max_events": 100, "ip_window_seconds": 3600
+  },
+  "signup": {"ip_max_events": 50, "ip_window_seconds": 3600},
+  "verification_email": {
+    "email_max_events": 3, "email_window_seconds": 3600, "email_cooldown_seconds": 300
+  }
+}
+```
+
+- `password_reset` counts every request for the typed email, account or not, plus the IP's total.
+  The email rule also needs `email_cooldown_seconds` between two requests, so one inbox gets at most
+  3 mails an hour, 5 minutes apart. Over a limit the page says "Too many reset requests for this
+  email. Try again later." with status `429`, and nothing is sent.
+- `signup` counts every attempt per IP, valid or not, so the "email taken" answer can't be probed
+  without limit. It stores no email. Over the limit: "Too many sign-up attempts from your network.
+  Try again later.", `429`, an unvalidated form (it says nothing about the email), and no account is
+  created.
+- `verification_email` counts every confirmation link to an email, the first one at signup included,
+  with the same cap and cooldown. Only a correct password can ask for one (see Signup), so it has no IP
+  rule. Over the limit, the login page looks the same and nothing is sent.
+
+The IP limits are loose on purpose: many people can share one address (offices, mobile carriers). A
+refused request isn't counted, so it doesn't extend its own block. Each request is stored first and
+then counted with itself included (a refused one is deleted again), so a burst of parallel requests
+can't all slip under the limit.
+
+### Storage
+
+Every event is a row in `throttle_events`: its scope, a keyed hash of the email (never the email
+itself; empty for `signup`), the IP (empty for `verification_email`) and the time. The hash is
+keyed with `DJANGO_SECRET_KEY`, so rotating the key resets every count. IPs are personal data, so `python manage.py deleteexpiredthrottleevents` deletes each
+scope's rows once they're older than its longest window; in production run it as a scheduled job (a
+Kubernetes CronJob, every 15 minutes).
 
 The client IP is `REMOTE_ADDR`. Behind a proxy or ingress, set uvicorn's `FORWARDED_ALLOW_IPS` to the
 proxy's address so it reads `X-Forwarded-For`; never `*`, which lets clients choose their own IP.
@@ -207,7 +253,7 @@ Each request logs `request_started` and `request_finished` (`request_failed` on 
   either way it comes back in the response header and is on every line of that request. Quote it when
   reporting a problem. Other values are replaced, and a client's `X-Correlation-ID` is ignored, so
   clients can't write into the logs.
-- **IP:** `REMOTE_ADDR` (behind a proxy, see Login limits); a client's own `X-Forwarded-For` is never
+- **IP:** `REMOTE_ADDR` (behind a proxy, see Throttling); a client's own `X-Forwarded-For` is never
   trusted.
 - **Masking:** values of keys that name a secret (`password`, `token`, `api_key`, `cookie`,
   `authorization`, …, in any spelling) and of such query-string parameters are logged as `***`.
@@ -229,11 +275,9 @@ and `ip` unless the worker logged it):
 | `session_expired` | info, warning when `login_time_missing` | `reason` (`absolute_age` with `session_age_seconds`, `login_time_missing`), `user_id` |
 | `signup_succeeded` | info | `user_id` |
 | `signup_refused` | info | `reason` (`email_taken`), `user_id` of the existing account |
-| `signup_email_skipped` | info | `user_id` (worker: the account was deactivated or deleted before the mail went out) |
+| `verification_email_skipped` | info | `user_id` (worker: the account was deactivated, deleted or confirmed before the mail went out) |
 | `email_verified` | info | `user_id` (from a confirm link, a completed password reset or an accepted invite) |
 | `email_verification_refused` | warning | `user_id` (always `null`: a bad link names no account we can trust) |
-| `verification_resend_skipped` | info | `user_id` (`null` for an unknown email; set for an inactive or staff account) |
-| `already_verified_email_skipped` | info | `user_id` (worker: the account is no longer confirmed, active or a consumer) |
 | `password_reset_requested` | info | `user_id` (`null` when no eligible account matches: unknown, inactive or without a password) |
 | `password_reset_refused` | warning | `reason` (`privileged_account`), `user_id` |
 | `password_reset_completed` | info | `user_id` |
@@ -242,9 +286,10 @@ and `ip` unless the worker logged it):
 | `invite_resend_requested` | info | `user_id` |
 | `invite_accepted` | info | `user_id` |
 | `invite_email_skipped` | info | `user_id` (worker: the account is inactive, deleted or already has a password) |
-| `signup_email_queue_failed`, `already_verified_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed` | error | `user_id`; the broker couldn't be reached, so no mail was queued (traceback attached) |
+| `request_limited` | warning | `scope` (`password_reset`, `signup`, `verification_email`); a request refused by its limit (no `user_id`: no account lookup) |
+| `verification_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed` | error | `user_id`; the broker couldn't be reached, so no mail was queued (traceback attached) |
 
-`email_digest` is the same keyed hash the `login_failures` table stores, so many failures on one
+`email_digest` is the same keyed hash the `throttle_events` table stores, so many failures on one
 address show up even when it has no account; the email itself is never logged. The pages look the
 same whatever the outcome: only these lines tell a wrong password from throttling.
 
@@ -271,8 +316,7 @@ there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in C
   in `CELERY_TASK_ROUTES`, on one topic exchange (`tasks`). Celery also requires a `default` queue: it
   catches tasks without a route, and a test fails for any task that has none. The `worker` service
   consumes the light queues (`-Q default,email`); heavy ones get their own worker.
-- Mail is sent by tasks (`send_signup_email`, `send_already_verified_email`,
-  `send_password_reset_email`, `send_invite_email`): each retries temporary SMTP errors with growing,
+- Mail is sent by tasks (`send_verification_email`, `send_password_reset_email`, `send_invite_email`): each retries temporary SMTP errors with growing,
   randomised waits (up to 5 times, about 12 minutes on average) and gives up at once on a refused
   address or a wrong login. Each attempt is limited to 60 seconds.
 - Tasks take ids, never personal data, and are queued only after the transaction commits. A task
@@ -333,19 +377,20 @@ k6 run -e LOAD_BASE_URL=http://localhost:8000 -e LOAD_EMAIL=… -e LOAD_PASSWORD
 `LOAD_EMAIL` must be a confirmed consumer account (staff and unconfirmed emails are refused there).
 Every `check()` must pass, or the run fails. Watch memory with `docker stats` alongside: Argon2 uses
 100 MiB per hash. Each run records a few failures from your IP, so many runs within 15 minutes trip
-the `ip` limit and valid logins fail: wait, or delete the `login_failures` rows. CI runs `login.js`
+the `ip` limit and valid logins fail: wait, or delete the `throttle_events` rows. CI runs `login.js`
 against the built image on every PR.
 
 ## CI
 
-GitHub Actions runs these jobs on every PR, in parallel except `load_test`:
+GitHub Actions runs these jobs on every PR and push to `main`, in parallel except `load_test`, and
+every Monday, so a new advisory fails `audit` or the image scan even in a week nothing changed:
 
 | Job | Does |
 |---|---|
 | `lint` | pre-commit (ruff, zizmor on the workflows, whitespace) and mypy |
 | `audit` | pip-audit on the locked dependencies |
-| `test` | migration check, tests with coverage (at least 95%), `check --deploy`; results in the run summary, JUnit and HTML coverage as an artifact |
-| `image` | builds the Docker image, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, a worker answering a ping) |
+| `test` | migration check, tests with coverage (at least 95%); coverage table in the run summary, HTML coverage as an artifact |
+| `image` | builds the Docker image (layers cached between runs), runs `check --deploy` in it with production settings, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, a worker answering a ping) |
 | `load_test` | runs `load-tests/login.js` against that image; p95 table in the run summary, k6's HTML report as an artifact |
 | `checks` | passes only if every job above passed; the one required check |
 
@@ -367,9 +412,8 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ```
 config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
-users/     custom user model (email login, no username), manager, admin, signup, email verification
-           and resend, invites, password reset, login/logout, session timeouts, login throttling,
-           auth event logging
+users/     custom user model (email login, no username), manager, admin, signup, email verification,
+           invites, password reset, login/logout, session timeouts, throttling, auth event logging
 templates/ shared layout (base.html), partials, email layouts and the home page
 static/    CSS, fonts, logos (self-hosted, with licences)
 tests/     mirrors the source tree

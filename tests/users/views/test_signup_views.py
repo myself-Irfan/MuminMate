@@ -3,9 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 from django.test import Client
-from pytest_django.asserts import assertContains
+from pytest_django.asserts import assertContains, assertNotContains
 
-from users.models import User
+from users.enums import ThrottleScope
+from users.models import ThrottleEvent, User
 
 
 @pytest.fixture
@@ -44,6 +45,58 @@ def test_signup_creates_user_and_redirects_to_done(
     assert response.status_code == HTTPStatus.FOUND
     assert response["Location"] == "/accounts/signup/done/"
     assert User.objects.filter(email="new@example.com").exists()
+
+
+@pytest.mark.django_db
+def test_signup_recorded(client: Client, signup_payload: dict[str, str]) -> None:
+    client.post("/accounts/signup/", signup_payload)
+
+    event = ThrottleEvent.objects.get(scope=ThrottleScope.SIGNUP)
+    assert (event.email_digest, event.ip) == ("", "127.0.0.1")
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("request_limits")
+def test_signup_refused_when_limited(client: Client, signup_payload: dict[str, str]) -> None:
+    for email in ("first@example.com", "second@example.com"):
+        client.post("/accounts/signup/", {**signup_payload, "email": email})
+
+    response = client.post("/accounts/signup/", signup_payload)
+
+    assertContains(
+        response,
+        "Too many sign-up attempts from your network. Try again later.",
+        status_code=HTTPStatus.TOO_MANY_REQUESTS,
+    )
+    assert not User.objects.filter(email="new@example.com").exists()
+    assert ThrottleEvent.objects.filter(scope=ThrottleScope.SIGNUP).count() == 2
+
+
+@pytest.mark.django_db
+def test_signup_records_invalid_attempt(client: Client, signup_payload: dict[str, str]) -> None:
+    signup_payload["password2"] = "different-placeholder"
+
+    client.post("/accounts/signup/", signup_payload)
+
+    assert ThrottleEvent.objects.filter(scope=ThrottleScope.SIGNUP).count() == 1
+
+
+# Taken-email answers are the probe the limit exists for.
+@pytest.mark.usefixtures("request_limits")
+def test_signup_refused_when_limited_by_taken_email_attempts(
+    client: Client, consumer_user: User, signup_payload: dict[str, str]
+) -> None:
+    signup_payload["email"] = consumer_user.email
+    for _ in range(2):
+        client.post("/accounts/signup/", signup_payload)
+
+    response = client.post("/accounts/signup/", signup_payload)
+
+    assertNotContains(
+        response,
+        "An account with this email already exists.",
+        status_code=HTTPStatus.TOO_MANY_REQUESTS,
+    )
 
 
 def test_signup_shows_error_when_email_taken(
@@ -113,4 +166,4 @@ def test_signup_done_page_asks_to_check_email(client: Client) -> None:
     response = client.get("/accounts/signup/done/")
 
     assertContains(response, "Check your email")
-    assertContains(response, 'href="/accounts/verify/resend/"')
+    assertContains(response, 'href="/accounts/login/"')

@@ -1,9 +1,11 @@
 from http import HTTPStatus
+from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth import SESSION_KEY
 from django.test import Client
-from pytest_django.asserts import assertContains, assertNotContains
+from pytest_django import DjangoCaptureOnCommitCallbacks
+from pytest_django.asserts import assertContains
 
 from users.models import User
 
@@ -11,6 +13,15 @@ from users.models import User
 @pytest.fixture
 def login_payload(consumer_user: User, password: str) -> dict[str, str]:
     return {"username": consumer_user.email, "password": password}
+
+
+@pytest.fixture
+def verification_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr(
+        "users.services.email_verification_service.send_verification_email.delay", delay
+    )
+    return delay
 
 
 @pytest.mark.django_db
@@ -79,26 +90,54 @@ def test_login_fails_with_same_error(client: Client, credentials: dict[str, str]
     assert SESSION_KEY not in client.session
 
 
-def test_login_refused_when_unverified_links_to_resend(
-    client: Client, unverified_consumer_user: User, password: str
+@pytest.mark.usefixtures("request_limits")
+def test_login_refused_when_unverified_sends_new_link(
+    client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    verification_email_delay: Mock,
+    unverified_consumer_user: User,
+    password: str,
 ) -> None:
-    response = client.post(
-        "/accounts/login/", {"username": unverified_consumer_user.email, "password": password}
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(
+            "/accounts/login/", {"username": unverified_consumer_user.email, "password": password}
+        )
 
-    assertContains(response, "Confirm your email to log in.")
-    assertContains(response, 'href="/accounts/verify/resend/"')
+    assertContains(response, "Confirm your email to log in. Check your inbox for the link.")
+    verification_email_delay.assert_called_once_with(unverified_consumer_user.pk)
     assert SESSION_KEY not in client.session
 
 
-@pytest.mark.usefixtures("consumer_user")
-def test_login_failure_offers_no_resend_link(client: Client) -> None:
-    response = client.post(
-        "/accounts/login/",
-        {"username": "irfan@example.com", "password": "wrong-placeholder-password"},
-    )
+@pytest.mark.usefixtures("request_limits")
+def test_login_refused_when_unverified_sends_no_link_within_cooldown(
+    client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    verification_email_delay: Mock,
+    unverified_consumer_user: User,
+    password: str,
+) -> None:
+    payload = {"username": unverified_consumer_user.email, "password": password}
+    with django_capture_on_commit_callbacks(execute=True):
+        client.post("/accounts/login/", payload)
+        response = client.post("/accounts/login/", payload)
 
-    assertNotContains(response, 'href="/accounts/verify/resend/"')
+    assertContains(response, "Confirm your email to log in. Check your inbox for the link.")
+    verification_email_delay.assert_called_once_with(unverified_consumer_user.pk)
+
+
+def test_login_failure_sends_no_link(
+    client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    verification_email_delay: Mock,
+    unverified_consumer_user: User,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        client.post(
+            "/accounts/login/",
+            {"username": unverified_consumer_user.email, "password": "wrong-placeholder-password"},
+        )
+
+    verification_email_delay.assert_not_called()
 
 
 def test_login_ignores_next_on_other_host(client: Client, login_payload: dict[str, str]) -> None:

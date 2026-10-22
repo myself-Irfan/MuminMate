@@ -10,11 +10,6 @@
     <input type="hidden" name="next" value="{{ next }}">
     <button type="submit">Log in</button>
   </form>
-  {% for error in form.non_field_errors.as_data %}
-    {% if error.code == "email_unverified" %}
-      <p class="note"><a href="{% url 'resend_verification' %}">Send a new confirmation link</a></p>
-    {% endif %}
-  {% endfor %}
   <p class="note"><a href="{% url 'password_reset' %}">Forgot your password?</a></p>
   <p class="note">New here? <a href="{% url 'signup' %}">Create an account</a>.</p>
   <p class="note">Staff? Use the <a href="{% url 'admin:login' %}">admin login</a>.</p>

@@ -4,6 +4,7 @@ from django.db import models
 from django.db.models.functions import Lower
 from django.utils import timezone
 
+from users.enums import ThrottleScope
 from users.managers import UserManager
 from users.validators import validate_email_is_ascii
 
@@ -55,18 +56,29 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.is_staff or self.is_superuser
 
 
-class LoginFailure(models.Model):
-    email_digest = models.CharField(max_length=64)
-    # Null when authenticate() has no request.
+class ThrottleEvent(models.Model):
+    scope = models.CharField(max_length=32, choices=ThrottleScope)
+    # Empty for scopes that count per IP only (Django: "" not null for strings).
+    email_digest = models.CharField(max_length=64, blank=True)
+    # Null when there is no client IP: no request, or a per-email-only scope.
     ip = models.GenericIPAddressField(null=True)
-    failed_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        db_table = "login_failures"
+        db_table = "throttle_events"
         indexes = (
-            models.Index(fields=("email_digest", "failed_at"), name="login_failures_digest_idx"),
-            models.Index(fields=("ip", "failed_at"), name="login_failures_ip_idx"),
+            models.Index(
+                fields=("scope", "email_digest", "created_at"), name="throttle_events_digest_idx"
+            ),
+            models.Index(fields=("scope", "ip", "created_at"), name="throttle_events_ip_idx"),
+        )
+        constraints = (
+            models.CheckConstraint(
+                condition=models.Q(scope__in=ThrottleScope.values),
+                name="throttle_events_scope_valid",
+                violation_error_message="Unknown throttle scope.",
+            ),
         )
 
     def __str__(self) -> str:
-        return f"Login failure at {self.failed_at} from {self.ip}"
+        return f"{self.get_scope_display()} at {self.created_at} from {self.ip}"

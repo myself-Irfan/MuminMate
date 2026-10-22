@@ -111,14 +111,10 @@ CELERY_TASK_QUEUES = [
     Queue("email", routing_key="email.#", queue_arguments={"x-queue-type": "quorum"}),
 ]
 CELERY_TASK_ROUTES = {
-    "users.tasks.send_signup_email": {"queue": "email", "routing_key": "email.signup"},
+    "users.tasks.send_verification_email": {"queue": "email", "routing_key": "email.verification"},
     "users.tasks.send_password_reset_email": {
         "queue": "email",
         "routing_key": "email.password_reset",
-    },
-    "users.tasks.send_already_verified_email": {
-        "queue": "email",
-        "routing_key": "email.already_verified",
     },
     "users.tasks.send_invite_email": {"queue": "email", "routing_key": "email.invite"},
 }
@@ -145,7 +141,7 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
 
-LOGIN_LIMITS = env.django_login_limits
+THROTTLE_LIMITS = env.django_throttle_limits
 # Also the lifetime of email verification links (users/tokens.py).
 PASSWORD_RESET_TIMEOUT = int(
     timedelta(hours=env.django_password_reset_timeout_hours).total_seconds()

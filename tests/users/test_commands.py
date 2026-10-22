@@ -5,7 +5,8 @@ import pytest
 from django.core.management import CommandError, call_command
 from django.utils import timezone
 
-from users.models import LoginFailure, User
+from users.enums import ThrottleScope
+from users.models import ThrottleEvent, User
 
 
 @pytest.mark.django_db
@@ -48,13 +49,34 @@ def test_createsuperuser_noinput_skips_password_validation(
 
 @pytest.mark.django_db
 @pytest.mark.usefixtures("login_limits")
-def test_deleteexpiredloginfailures_reports_deleted_count() -> None:
-    LoginFailure.objects.create(
-        email_digest="old", failed_at=timezone.now() - timedelta(seconds=301)
+def test_deleteexpiredthrottleevents_reports_deleted_count() -> None:
+    ThrottleEvent.objects.create(
+        scope=ThrottleScope.LOGIN_FAILURE,
+        email_digest="old",
+        created_at=timezone.now() - timedelta(seconds=301),
+    )
+    ThrottleEvent.objects.create(
+        scope=ThrottleScope.PASSWORD_RESET,
+        email_digest="old",
+        created_at=timezone.now() - timedelta(days=1),
     )
     stdout = StringIO()
 
-    call_command("deleteexpiredloginfailures", stdout=stdout)
+    call_command("deleteexpiredthrottleevents", stdout=stdout)
 
-    assert stdout.getvalue() == "Deleted 1 expired login failures.\n"
-    assert not LoginFailure.objects.exists()
+    assert stdout.getvalue() == "Deleted 2 expired throttle events.\n"
+    assert not ThrottleEvent.objects.exists()
+
+
+# Every scope, so a new one without a retention rule fails here.
+@pytest.mark.django_db
+@pytest.mark.usefixtures("login_limits", "request_limits")
+@pytest.mark.parametrize("scope", ThrottleScope)
+def test_deleteexpiredthrottleevents_deletes_old_rows_of_every_scope(scope: ThrottleScope) -> None:
+    ThrottleEvent.objects.create(
+        scope=scope, email_digest="old", created_at=timezone.now() - timedelta(days=1)
+    )
+
+    call_command("deleteexpiredthrottleevents", stdout=StringIO())
+
+    assert not ThrottleEvent.objects.exists()
