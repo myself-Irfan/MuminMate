@@ -289,10 +289,10 @@ def test_verified_column_reads_is_email_verified(
     assert UserAdmin(User, admin.site).verified(user) is verified
 
 
-@pytest.mark.django_db
-def test_changelist_forbidden_when_staff_without_permission(client: Client, password: str) -> None:
-    staff = User.objects.create_user(email="staff@example.com", password=password, is_staff=True)
-    client.force_login(staff)
+def test_changelist_forbidden_when_staff_without_permission(
+    client: Client, other_staff_user: User
+) -> None:
+    client.force_login(other_staff_user)
 
     response = client.get("/admin/users/user/")
 

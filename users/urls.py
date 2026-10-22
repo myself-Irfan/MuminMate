@@ -1,11 +1,7 @@
 from django.urls import path
 
 from users.views.authentication_views import ConsumerLoginView, ConsumerLogoutView
-from users.views.email_verification_views import (
-    ResendVerificationDoneView,
-    ResendVerificationView,
-    VerifyEmailView,
-)
+from users.views.email_verification_views import VerifyEmailView
 from users.views.invite_view import ConsumerInviteConfirmView
 from users.views.password_reset_views import (
     ConsumerPasswordResetCompleteView,
@@ -20,16 +16,6 @@ urlpatterns = [
     path("logout/", ConsumerLogoutView.as_view(), name=ConsumerLogoutView.url_name),
     path("signup/", SignupView.as_view(), name=SignupView.url_name),
     path("signup/done/", SignupDoneView.as_view(), name=SignupDoneView.url_name),
-    path(
-        "verify/resend/",
-        ResendVerificationView.as_view(),
-        name=ResendVerificationView.url_name,
-    ),
-    path(
-        "verify/resend/done/",
-        ResendVerificationDoneView.as_view(),
-        name=ResendVerificationDoneView.url_name,
-    ),
     path(
         "verify/<uidb64>/<token>/",
         VerifyEmailView.as_view(),

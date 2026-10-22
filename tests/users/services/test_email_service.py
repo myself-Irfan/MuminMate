@@ -8,7 +8,6 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
 from django.core.mail import EmailMultiAlternatives
 from django.test import Client
-from django.utils import timezone
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from pytest_django import Settings
@@ -25,16 +24,16 @@ def public_url(settings: Settings) -> str:
     return url
 
 
-def test_signup_email_sends_verify_link(
-    settings: Settings, consumer_user: User, public_url: str
+def test_verification_email_sends_verify_link(
+    settings: Settings, unverified_consumer_user: User, public_url: str
 ) -> None:
     settings.DEFAULT_FROM_EMAIL = "MuminMate <no-reply@example.com>"
 
-    EmailService().send_signup_email(consumer_user.pk)
+    EmailService().send_verification_email(unverified_consumer_user.pk)
 
     [sent] = mail.outbox
     assert isinstance(sent, EmailMultiAlternatives)
-    assert sent.to == [consumer_user.email]
+    assert sent.to == [unverified_consumer_user.email]
     assert sent.from_email == "MuminMate <no-reply@example.com>"
     assert sent.subject == "Confirm your email for MuminMate"
     [link] = re.findall(rf"{re.escape(public_url)}/accounts/verify/[\w-]+/[\w-]+/", str(sent.body))
@@ -44,10 +43,10 @@ def test_signup_email_sends_verify_link(
     assert mimetype == "text/html"
 
 
-def test_signup_email_link_verifies_user(
+def test_verification_email_link_verifies_user(
     client: Client, unverified_consumer_user: User, public_url: str
 ) -> None:
-    EmailService().send_signup_email(unverified_consumer_user.pk)
+    EmailService().send_verification_email(unverified_consumer_user.pk)
     [path] = re.findall(
         rf"{re.escape(public_url)}(/accounts/verify/[\w-]+/[\w-]+/)", str(mail.outbox[0].body)
     )
@@ -61,12 +60,12 @@ def test_signup_email_link_verifies_user(
 @pytest.mark.parametrize(
     ("timeout_seconds", "expiry"), [(259_200, "3\xa0days"), (600, "10\xa0minutes")]
 )
-def test_signup_email_states_link_expiry(
-    settings: Settings, consumer_user: User, timeout_seconds: int, expiry: str
+def test_verification_email_states_link_expiry(
+    settings: Settings, unverified_consumer_user: User, timeout_seconds: int, expiry: str
 ) -> None:
     settings.PASSWORD_RESET_TIMEOUT = timeout_seconds
 
-    EmailService().send_signup_email(consumer_user.pk)
+    EmailService().send_verification_email(unverified_consumer_user.pk)
 
     [sent] = mail.outbox
     assert isinstance(sent, EmailMultiAlternatives)
@@ -76,83 +75,36 @@ def test_signup_email_states_link_expiry(
     assert f"expires in {expiry}" in html
 
 
-def test_signup_email_skipped_when_user_inactive(
-    json_logs: io.StringIO, consumer_user: User
-) -> None:
-    consumer_user.is_active = False
-    consumer_user.save()
-
-    EmailService().send_signup_email(consumer_user.pk)
-
-    assert mail.outbox == []
-    [line] = events(json_logs, "signup_email_skipped")
-    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
-
-
-@pytest.mark.django_db
-def test_signup_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
-    EmailService().send_signup_email(999_999)
-
-    assert mail.outbox == []
-    [line] = events(json_logs, "signup_email_skipped")
-    assert line["user_id"] == 999_999
-
-
-def test_already_verified_email_sends_login_link(consumer_user: User, public_url: str) -> None:
-    EmailService().send_already_verified_email(consumer_user.pk)
-
-    [sent] = mail.outbox
-    assert isinstance(sent, EmailMultiAlternatives)
-    assert sent.to == [consumer_user.email]
-    assert sent.subject == "Your MuminMate email is already confirmed"
-    assert f"{public_url}/accounts/login/" in sent.body
-    [(html, _)] = sent.alternatives
-    assert isinstance(html, str)
-    assert f"{public_url}/accounts/login/" in html
-
-
-# The account may have changed since the resend was requested.
-def test_already_verified_email_skipped_when_user_unverified(
+def test_verification_email_skipped_when_user_inactive(
     json_logs: io.StringIO, unverified_consumer_user: User
 ) -> None:
-    EmailService().send_already_verified_email(unverified_consumer_user.pk)
+    unverified_consumer_user.is_active = False
+    unverified_consumer_user.save()
+
+    EmailService().send_verification_email(unverified_consumer_user.pk)
 
     assert mail.outbox == []
-    [line] = events(json_logs, "already_verified_email_skipped")
+    [line] = events(json_logs, "verification_email_skipped")
     assert (line["level"], line["user_id"]) == ("info", unverified_consumer_user.pk)
 
 
-def test_already_verified_email_skipped_when_user_inactive(
+# Confirmed between queueing and sending: the link would already be dead.
+def test_verification_email_skipped_when_user_already_verified(
     json_logs: io.StringIO, consumer_user: User
 ) -> None:
-    consumer_user.is_active = False
-    consumer_user.save()
-
-    EmailService().send_already_verified_email(consumer_user.pk)
+    EmailService().send_verification_email(consumer_user.pk)
 
     assert mail.outbox == []
-    [line] = events(json_logs, "already_verified_email_skipped")
+    [line] = events(json_logs, "verification_email_skipped")
     assert line["user_id"] == consumer_user.pk
 
 
-def test_already_verified_email_skipped_when_user_privileged(
-    json_logs: io.StringIO, privileged_user: User
-) -> None:
-    User.objects.filter(pk=privileged_user.pk).update(email_verified_at=timezone.now())
-
-    EmailService().send_already_verified_email(privileged_user.pk)
-
-    assert mail.outbox == []
-    [line] = events(json_logs, "already_verified_email_skipped")
-    assert line["user_id"] == privileged_user.pk
-
-
 @pytest.mark.django_db
-def test_already_verified_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
-    EmailService().send_already_verified_email(999_999)
+def test_verification_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_verification_email(999_999)
 
     assert mail.outbox == []
-    [line] = events(json_logs, "already_verified_email_skipped")
+    [line] = events(json_logs, "verification_email_skipped")
     assert line["user_id"] == 999_999
 
 
@@ -318,9 +270,9 @@ def test_invite_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
     ids=["refused", "server_down", "timeout"],
 )
 def test_email_raises_when_mail_server_fails(
-    monkeypatch: pytest.MonkeyPatch, consumer_user: User, error: OSError
+    monkeypatch: pytest.MonkeyPatch, unverified_consumer_user: User, error: OSError
 ) -> None:
     monkeypatch.setattr(EmailMultiAlternatives, "send", Mock(side_effect=error))
 
     with pytest.raises(type(error)):
-        EmailService().send_signup_email(consumer_user.pk)
+        EmailService().send_verification_email(unverified_consumer_user.pk)

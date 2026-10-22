@@ -13,10 +13,9 @@ from django.core import mail
 
 from users.models import User
 from users.tasks import (
-    send_already_verified_email,
     send_invite_email,
     send_password_reset_email,
-    send_signup_email,
+    send_verification_email,
 )
 
 type EmailTaskCase = tuple[Task[[int], None], str]
@@ -24,34 +23,26 @@ type EmailTaskCase = tuple[Task[[int], None], str]
 
 @pytest.fixture(
     params=[
-        (send_signup_email, "users.tasks.EmailService.send_signup_email"),
+        (send_verification_email, "users.tasks.EmailService.send_verification_email"),
         (send_password_reset_email, "users.tasks.EmailService.send_password_reset_email"),
-        (send_already_verified_email, "users.tasks.EmailService.send_already_verified_email"),
         (send_invite_email, "users.tasks.EmailService.send_invite_email"),
     ],
-    ids=["signup", "password_reset", "already_verified", "invite"],
+    ids=["verification", "password_reset", "invite"],
 )
 def email_task(request: pytest.FixtureRequest) -> EmailTaskCase:
     task_and_service_method: EmailTaskCase = request.param
     return task_and_service_method
 
 
-def test_signup_email_task_sends_mail(consumer_user: User) -> None:
-    send_signup_email(consumer_user.pk)
+def test_verification_email_task_sends_mail(unverified_consumer_user: User) -> None:
+    send_verification_email(unverified_consumer_user.pk)
 
     [sent] = mail.outbox
-    assert sent.to == [consumer_user.email]
+    assert sent.to == [unverified_consumer_user.email]
 
 
 def test_password_reset_email_task_sends_mail(consumer_user: User) -> None:
     send_password_reset_email(consumer_user.pk)
-
-    [sent] = mail.outbox
-    assert sent.to == [consumer_user.email]
-
-
-def test_already_verified_email_task_sends_mail(consumer_user: User) -> None:
-    send_already_verified_email(consumer_user.pk)
 
     [sent] = mail.outbox
     assert sent.to == [consumer_user.email]

@@ -7,32 +7,25 @@ from django.utils import timezone
 from django.utils.http import urlsafe_base64_decode
 from kombu.exceptions import OperationalError
 
+from users.enums import ThrottleScope
 from users.exceptions import InvalidVerificationLinkError
 from users.models import User
-from users.tasks import send_already_verified_email, send_signup_email
+from users.services.request_limit_service import RequestLimitService
+from users.tasks import send_verification_email
 from users.tokens import EmailVerificationTokenGenerator
 
 logger = structlog.get_logger(__name__)
 
 
 class EmailVerificationService:
-    def request_verification(self, user_id: int) -> None:
-        transaction.on_commit(partial(self._queue_signup_email, user_id))
+    # Every link counts toward the per-email limit, the first one at signup too.
+    def request_verification(self, user: User) -> None:
+        RequestLimitService().record(ThrottleScope.VERIFICATION_EMAIL, user.email, ip=None)
+        transaction.on_commit(partial(self._queue_verification_email, user.pk))
 
-    # The page answers the same for every email; only the owner's inbox learns more.
-    def request_resend(self, email: str) -> None:
-        try:
-            user = User.objects.get(email=User.objects.normalize_email(email))
-        except User.DoesNotExist:
-            logger.info("verification_resend_skipped", user_id=None)
-            return
-        if not user.is_active or user.is_privileged:
-            logger.info("verification_resend_skipped", user_id=user.pk)
-            return
-        if user.is_email_verified:
-            transaction.on_commit(partial(self._queue_already_verified_email, user.pk))
-        else:
-            self.request_verification(user.pk)
+    def resend(self, user: User) -> None:
+        if RequestLimitService().record_verification_email(user.email):
+            transaction.on_commit(partial(self._queue_verification_email, user.pk))
 
     def is_link_valid(self, *, uidb64: str, token: str) -> bool:
         return self._get_user_by_link(uidb64, token) is not None
@@ -54,17 +47,11 @@ class EmailVerificationService:
         return bool(updated)
 
     # A broker outage mustn't fail the request, as with Django's own password reset send_mail.
-    def _queue_signup_email(self, user_id: int) -> None:
+    def _queue_verification_email(self, user_id: int) -> None:
         try:
-            send_signup_email.delay(user_id)
+            send_verification_email.delay(user_id)
         except OperationalError:
-            logger.exception("signup_email_queue_failed", user_id=user_id)
-
-    def _queue_already_verified_email(self, user_id: int) -> None:
-        try:
-            send_already_verified_email.delay(user_id)
-        except OperationalError:
-            logger.exception("already_verified_email_queue_failed", user_id=user_id)
+            logger.exception("verification_email_queue_failed", user_id=user_id)
 
     def _get_user_by_link(self, uidb64: str, token: str) -> User | None:
         user = self._get_user(uidb64)

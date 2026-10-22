@@ -7,7 +7,7 @@ from users.models import User
 
 def digest_email(email: str) -> str:
     normalized = User.objects.normalize_email(email)
-    return salted_hmac("users.login_failure", normalized, algorithm="sha256").hexdigest()
+    return salted_hmac("users.throttle_event", normalized, algorithm="sha256").hexdigest()
 
 
 def mask_ip(address: str) -> str:

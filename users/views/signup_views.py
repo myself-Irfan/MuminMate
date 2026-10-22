@@ -1,5 +1,7 @@
+from http import HTTPStatus
 from typing import Any
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
@@ -10,6 +12,7 @@ from django.views.generic import FormView, TemplateView
 
 from users.exceptions import EmailTakenError
 from users.forms.signup_form import SignupForm
+from users.services.request_limit_service import RequestLimitService
 from users.services.user_service import UserService
 
 
@@ -25,11 +28,20 @@ class SignupView(FormView[SignupForm]):
             return redirect("home")
         return super().dispatch(request, *args, **kwargs)
 
-    def form_valid(self, form: SignupForm) -> HttpResponse:
-        try:
-            UserService().signup(
-                email=form.cleaned_data["email"], password=form.cleaned_data["password1"]
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if not RequestLimitService().record_signup(request.META.get("REMOTE_ADDR")):
+            messages.error(request, "Too many sign-up attempts from your network. Try again later.")
+            # Unvalidated form: its errors would say whether the email is taken.
+            form = self.get_form_class()(initial={"email": request.POST.get("email", "")})
+            return self.render_to_response(
+                self.get_context_data(form=form), status=HTTPStatus.TOO_MANY_REQUESTS
             )
+        return super().post(request, *args, **kwargs)
+
+    def form_valid(self, form: SignupForm) -> HttpResponse:
+        email = form.cleaned_data["email"]
+        try:
+            UserService().signup(email=email, password=form.cleaned_data["password1"])
         except EmailTakenError:
             form.add_error(
                 "email",

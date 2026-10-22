@@ -64,8 +64,8 @@ def test_unknown_email_logged_with_null_user_id(client: Client, json_logs: io.St
 def test_throttled_login_logged_with_null_user_id(
     client: Client, json_logs: io.StringIO, consumer_user: User, password: str
 ) -> None:
-    LoginFailureService().record(consumer_user.email, "127.0.0.1")
-    LoginFailureService().record(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record_attempt(consumer_user.email, "127.0.0.1")
+    LoginFailureService().record_attempt(consumer_user.email, "127.0.0.1")
 
     client.post("/accounts/login/", {"username": consumer_user.email, "password": password})
 

@@ -1,6 +1,7 @@
 import pytest
 from asgiref.sync import async_to_sync
 from django.contrib.auth import authenticate
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
 from users.models import User
@@ -39,6 +40,13 @@ def test_create_user_not_staff_or_superuser(password: str) -> None:
 def test_create_user_fails_when_email_blank(password: str) -> None:
     with pytest.raises(ValueError, match="email"):
         User.objects.create_user(email="  ", password=password)
+
+
+def test_create_user_fails_when_email_invalid(password: str) -> None:
+    with pytest.raises(ValidationError) as error:
+        User.objects.create_user(email="not-an-email", password=password)
+
+    assert [e.code for e in error.value.error_dict["email"]] == ["invalid"]
 
 
 @pytest.mark.django_db

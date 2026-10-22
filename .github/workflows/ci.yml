@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Weekly: new advisories (pip-audit, Trivy) fail it on a week nothing changed.
+  schedule:
+    - cron: "0 3 * * 1"
 
 permissions:
   contents: read
@@ -34,7 +37,7 @@ env:
   DJANGO_SESSION_ABSOLUTE_HOURS: "12"
   DJANGO_PASSWORD_RESET_TIMEOUT_HOURS: "72"
   DJANGO_LOGGING: '{"level":"INFO","format":"json"}'
-  DJANGO_LOGIN_LIMITS: '{"email_ip":{"max_failures":5,"window_seconds":900},"ip":{"max_failures":100,"window_seconds":900},"email":{"max_failures":20,"window_seconds":3600,"backoff_seconds":60}}'
+  DJANGO_THROTTLE_LIMITS: '{"login":{"email_ip_max_events":5,"email_ip_window_seconds":900,"ip_max_events":100,"ip_window_seconds":900,"email_max_events":20,"email_window_seconds":3600,"email_backoff_seconds":60},"password_reset":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300,"ip_max_events":100,"ip_window_seconds":3600},"signup":{"ip_max_events":50,"ip_window_seconds":3600},"verification_email":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300}}'
   DJANGO_EMAIL: '{"host":"localhost","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>"}'
   DJANGO_EMAIL_HOST_USER: ""
   DJANGO_EMAIL_HOST_PASSWORD: ""
@@ -102,41 +105,20 @@ jobs:
       - run: uv sync --locked
       - run: uv run python manage.py makemigrations --check --dry-run
       - name: Test
-        run: uv run pytest --cov --cov-report=term --cov-report=html --junitxml=junit.xml
-      - name: Test Summary
-        if: ${{ !cancelled() && hashFiles('junit.xml') != '' }}
+        run: uv run pytest --cov --cov-report=term --cov-report=html
+      # Report only; the Test step enforces fail_under.
+      - name: Coverage Summary
+        if: ${{ !cancelled() && hashFiles('.coverage') != '' }}
         run: |
-          uv run python - >> "$GITHUB_STEP_SUMMARY" <<'EOF'
-          import xml.etree.ElementTree as ET
-          suite = ET.parse("junit.xml").getroot().find("testsuite")
-          total, failed, errors, skipped = (
-              int(suite.get(key)) for key in ("tests", "failures", "errors", "skipped")
-          )
-          passed = total - failed - errors - skipped
-          print("## Tests\n")
-          print("| Passed | Failed | Errors | Skipped | Time |")
-          print("|---|---|---|---|---|")
-          print(f"| {passed} | {failed} | {errors} | {skipped} | {float(suite.get('time')):.1f}s |")
-          print("\n## Coverage\n")
-          EOF
-          # Report only; the Test step enforces fail_under.
+          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
           uv run coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload Test Reports
-        if: ${{ !cancelled() }}
+      - name: Upload Coverage Report
+        if: ${{ !cancelled() && hashFiles('htmlcov/index.html') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: test-reports
-          path: |
-            junit.xml
-            htmlcov/
+          name: coverage-report
+          path: htmlcov/
           retention-days: 14
-      - name: Deploy Check
-        run: uv run python manage.py check --deploy --fail-level WARNING
-        env:
-          DJANGO_HTTPS: "true"
-          DJANGO_PUBLIC_URL: https://localhost
-          DJANGO_HSTS_SECONDS: "3600"
-          DJANGO_SECRET_KEY: ci-deploy-check-only-0123456789abcdefghijklmnopqrstuvwxyz
 
   image:
     runs-on: ubuntu-24.04
@@ -144,8 +126,24 @@ jobs:
     services: *services
     steps:
       - *checkout
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      # Layers cached in GitHub's Actions cache; load: the image goes on to docker save and run.
       - name: Build Image
-        run: docker build --tag muminmate .
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          tags: muminmate:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # The settings production runs with, checked in the image that ships.
+      - name: Deploy Check
+        run: |
+          docker run --rm --env-file <(env | grep -E '^(DJANGO|POSTGRES|RABBITMQ)_') \
+            --env DJANGO_HTTPS=true --env DJANGO_PUBLIC_URL=https://localhost \
+            --env DJANGO_HSTS_SECONDS=3600 \
+            --env DJANGO_SECRET_KEY=ci-deploy-check-only-0123456789abcdefghijklmnopqrstuvwxyz \
+            muminmate python manage.py check --deploy --fail-level WARNING
       # A saved tar, not the Docker socket: the scanner gets no access to the daemon.
       - name: Scan Image
         run: |

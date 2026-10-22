@@ -4,6 +4,5 @@
 
 {% block card %}
   <h1>This link is invalid or has expired</h1>
-  <p>It may have been used already. If your email is confirmed, you can <a href="{% url 'login' %}">log in</a>.</p>
-  <p class="note">Not confirmed yet? <a href="{% url 'resend_verification' %}">Send a new link</a>.</p>
+  <p>It may have been used already. <a href="{% url 'login' %}">Log in</a>: if your email isn't confirmed yet, we'll send you a new link.</p>
 {% endblock %}

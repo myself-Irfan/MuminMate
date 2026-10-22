@@ -27,8 +27,9 @@ class ThrottledModelBackend(ModelBackend):
             return None
         ip = request.META.get("REMOTE_ADDR") if request else None
         failures = LoginFailureService()
-        # Refuse before super(): no Argon2 hash, nothing recorded.
-        if failures.is_throttled(username, ip):
+        attempt = failures.record_attempt(username, ip)
+        # Refused before super(): no Argon2 hash, nothing kept.
+        if attempt is None:
             logger.warning(
                 "login_failed",
                 reason="throttled",
@@ -38,7 +39,7 @@ class ThrottledModelBackend(ModelBackend):
             return None
         user = super().authenticate(request, username=username, password=password)
         if user is None:
-            failures.record(username, ip)
+            # The attempt stays as the failure.
             logger.warning(
                 "login_failed",
                 reason="bad_credentials",
@@ -46,7 +47,7 @@ class ThrottledModelBackend(ModelBackend):
                 user_id=UserService().get_id_by_email(username),
             )
         else:
-            failures.clear(username, ip)
+            failures.clear_attempt(attempt)
         return user
 
     async def aauthenticate(

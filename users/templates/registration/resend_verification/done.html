@@ -1,9 +1,0 @@
-{% extends "registration/base_card.html" %}
-
-{% block title %}Check your email - MuminMate{% endblock %}
-
-{% block card %}
-  <h1>Check your email</h1>
-  <p>If an account needs confirming, we&rsquo;ve sent a new link to that email.</p>
-  <p class="note">No email? Check your spam folder, or <a href="{% url 'resend_verification' %}">try again</a>.</p>
-{% endblock %}

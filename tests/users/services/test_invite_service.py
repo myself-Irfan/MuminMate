@@ -6,7 +6,7 @@ from kombu.exceptions import OperationalError
 from pytest_django import DjangoCaptureOnCommitCallbacks
 
 from tests.logging_support import events
-from users.models import LoginFailure, User
+from users.models import ThrottleEvent, User
 from users.services.invite_service import InviteService
 from users.services.login_failure_service import LoginFailureService
 
@@ -102,12 +102,12 @@ def test_accept_verifies_email(invited_user: User) -> None:
 
 def test_accept_clears_own_failures_only(invited_user: User) -> None:
     failures = LoginFailureService()
-    failures.record(invited_user.email, "198.51.100.1")
-    failures.record(invited_user.email, "203.0.113.7")
+    failures.record_attempt(invited_user.email, "198.51.100.1")
+    failures.record_attempt(invited_user.email, "203.0.113.7")
 
     InviteService().accept(invited_user, "198.51.100.1")
 
-    assert list(LoginFailure.objects.values_list("ip", flat=True)) == ["203.0.113.7"]
+    assert list(ThrottleEvent.objects.values_list("ip", flat=True)) == ["203.0.113.7"]
 
 
 def test_accept_logs_invite_accepted(json_logs: io.StringIO, invited_user: User) -> None:

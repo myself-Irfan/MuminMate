@@ -15,7 +15,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from users.limits import LoginLimits
+from users.limits import ThrottleLimits
 
 
 class LogSettings(BaseModel, extra="forbid", frozen=True):
@@ -46,7 +46,7 @@ class Env(BaseSettings):
     django_session_absolute_hours: PositiveInt
     django_password_reset_timeout_hours: PositiveInt
     django_logging: LogSettings
-    django_login_limits: LoginLimits
+    django_throttle_limits: ThrottleLimits
     django_email: EmailSettings
     django_email_host_user: str
     django_email_host_password: SecretStr
