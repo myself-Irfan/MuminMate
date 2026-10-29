@@ -10,6 +10,7 @@ from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView
 
+from core.client_ip import get_client_ip
 from users.exceptions import EmailTakenError
 from users.forms.signup_form import SignupForm
 from users.services.request_limit_service import RequestLimitService
@@ -29,7 +30,7 @@ class SignupView(FormView[SignupForm]):
         return super().dispatch(request, *args, **kwargs)
 
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        if not RequestLimitService().record_signup(request.META.get("REMOTE_ADDR")):
+        if not RequestLimitService().record_signup(get_client_ip(request)):
             messages.error(request, "Too many sign-up attempts from your network. Try again later.")
             # Unvalidated form: its errors would say whether the email is taken.
             form = self.get_form_class()(initial={"email": request.POST.get("email", "")})

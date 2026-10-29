@@ -1,7 +1,10 @@
+import json
 from http import HTTPStatus
 
 import pytest
-from django.test import Client
+from django.http import Http404
+from django.test import Client, RequestFactory
+from ninja.errors import AuthenticationError, AuthorizationError, Throttled, ValidationError
 
 from config.api import api
 from users.models import User
@@ -47,3 +50,47 @@ def test_docs_open_for_staff(client: Client, staff_user: User) -> None:
     response = client.get("/api/docs")
 
     assert response.status_code == HTTPStatus.OK
+
+
+@pytest.mark.parametrize(
+    ("error", "status", "detail"),
+    [
+        (AuthenticationError(), HTTPStatus.UNAUTHORIZED, "Unauthorized"),
+        (AuthorizationError(), HTTPStatus.FORBIDDEN, "Forbidden"),
+        (Throttled(wait=None), HTTPStatus.TOO_MANY_REQUESTS, "Too many requests."),
+        (Http404(), HTTPStatus.NOT_FOUND, "Not found."),
+    ],
+    ids=["unauthorized", "forbidden", "throttled", "not_found"],
+)
+def test_ninja_errors_rendered_as_problem(
+    rf: RequestFactory, error: Exception, status: HTTPStatus, detail: str
+) -> None:
+    response = api.on_exception(rf.get("/api/"), error)
+
+    assert response.status_code == status
+    assert response["Content-Type"] == "application/problem+json"
+    assert json.loads(response.content) == {
+        "type": "about:blank",
+        "title": status.phrase,
+        "status": status,
+        "detail": detail,
+    }
+
+
+# The submitted input is dropped: it could be a password.
+def test_validation_error_rendered_as_problem_with_field_errors(rf: RequestFactory) -> None:
+    error = ValidationError(
+        [{"type": "missing", "loc": ("body", "email"), "msg": "Field required", "input": "secret"}]
+    )
+
+    response = api.on_exception(rf.post("/api/"), error)
+
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+    assert response["Content-Type"] == "application/problem+json"
+    assert json.loads(response.content) == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": "The request has invalid fields.",
+        "errors": [{"type": "missing", "loc": ["body", "email"], "msg": "Field required"}],
+    }

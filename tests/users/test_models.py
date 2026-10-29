@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.utils import timezone
@@ -86,6 +87,14 @@ def test_save_fails_when_superuser_not_staff() -> None:
         user.save()
 
 
+@pytest.mark.django_db
+def test_validate_constraints_fails_when_superuser_not_staff() -> None:
+    user = User(email="root@example.com", is_superuser=True)
+
+    with pytest.raises(ValidationError, match="A superuser must also be staff"):
+        user.validate_constraints()
+
+
 @pytest.mark.parametrize(
     ("flags", "privileged"),
     [
@@ -99,6 +108,60 @@ def test_is_privileged_when_staff_or_superuser(flags: dict[str, bool], privilege
     user = User(email="irfan@example.com", **flags)
 
     assert user.is_privileged is privileged
+
+
+@pytest.mark.parametrize(
+    ("fields", "allowed"),
+    [
+        ({}, True),
+        ({"is_active": False}, False),
+        ({"is_staff": True}, False),
+        ({"is_staff": True, "is_superuser": True}, False),
+        ({"password": UNUSABLE_PASSWORD_PREFIX}, False),
+    ],
+    ids=["consumer", "inactive", "staff", "superuser", "no_password"],
+)
+def test_can_reset_password_when_active_consumer_with_password(
+    fields: dict[str, object], allowed: bool
+) -> None:
+    user = User(**{"email": "irfan@example.com", "password": "argon2$hash", **fields})
+
+    assert user.can_reset_password is allowed
+
+
+@pytest.mark.parametrize(
+    ("fields", "pending"),
+    [
+        ({}, True),
+        ({"is_staff": True}, True),
+        ({"is_active": False}, False),
+        ({"password": "argon2$hash"}, False),
+    ],
+    ids=["invited", "invited_staff", "inactive", "password_set"],
+)
+def test_is_invite_pending_when_active_without_password(
+    fields: dict[str, object], pending: bool
+) -> None:
+    user = User(**{"email": "invited@example.com", "password": UNUSABLE_PASSWORD_PREFIX, **fields})
+
+    assert user.is_invite_pending is pending
+
+
+@pytest.mark.parametrize(
+    ("fields", "pending"),
+    [
+        ({}, True),
+        ({"email_verified_at": timezone.now()}, False),
+        ({"is_active": False}, False),
+    ],
+    ids=["unverified", "verified", "inactive"],
+)
+def test_is_verification_pending_when_active_and_unverified(
+    fields: dict[str, object], pending: bool
+) -> None:
+    user = User(**{"email": "irfan@example.com", **fields})
+
+    assert user.is_verification_pending is pending
 
 
 def test_throttle_event_str_shows_scope_time_and_ip() -> None:

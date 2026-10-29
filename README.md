@@ -34,7 +34,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_HSTS_SECONDS` | HSTS max-age; `0` locally, start production at `3600` |
 | `DJANGO_SESSION_IDLE_MINUTES` | Log out after this long without a request (`180`) |
 | `DJANGO_SESSION_ABSOLUTE_HOURS` | Log out this long after login, even if active (`12`); at least the idle value |
-| `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS` | Password reset and email verification links expire after this long (`72`); a change also applies to links already sent |
+| `DJANGO_EMAIL_LINK_TIMEOUT_HOURS` | Email links (verification, password reset, invite) expire after this long (`72`); a change also applies to links already sent |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
 | `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup and verification email limits as one-line JSON (see Throttling below) |
 | `DJANGO_EMAIL` | Mail server as one-line JSON (see Email below) |
@@ -51,6 +51,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `RABBITMQ_USER` | Broker user, created by the container on first start |
 | `RABBITMQ_PASSWORD` | Broker user's password; generate with the command in `.env.example` |
 | `RABBITMQ_VHOST` | Broker virtual host (RabbitMQ's isolation unit; `muminmate`) |
+| `FORWARDED_ALLOW_IPS` | uvicorn's own: proxies trusted for the client IP and scheme, as IPs or networks (`127.0.0.1,::1` without a proxy; never `*`) |
 
 ## Commands
 
@@ -81,6 +82,11 @@ Every variable is required; the app refuses to start if one is missing.
 | `/accounts/invite/<uid>/<token>/` | Set your password from an invite email (public) |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
+Every error an API endpoint raises is RFC 9457 Problem+JSON (`application/problem+json`: `type`,
+`title`, `status`, `detail`), ours and Ninja's alike (401, 403, 404, 429). A `422` adds `errors`: each
+failed field's `loc`, `msg` and `type`, never the submitted value. Unknown `/api/` paths and wrong
+methods still get Django's HTML 404 and 405.
+
 ## Access
 
 Deny by default. Every page requires login (Django's `LoginRequiredMiddleware`, extended in
@@ -88,6 +94,12 @@ Deny by default. Every page requires login (Django's `LoginRequiredMiddleware`, 
 session (Ninja `django_auth`, CSRF-checked); a public router opts out with `auth=None` (only health).
 Staff and superusers use separate accounts: every consumer page, public ones included, sends them to
 `/admin/`, which has its own login and logout. A superuser must be staff (a database constraint).
+
+Every response carries a strict Content-Security-Policy ([django-csp](https://django-csp.readthedocs.io),
+set in `CONTENT_SECURITY_POLICY`): scripts, styles, fonts and requests from this site only, `data:`
+images (Pico's icons), no plugins, no `<base>`, forms post only here, no framing. It holds because
+nothing is inline and nothing comes from a CDN; keep it that way. Token pages (confirm, reset, invite)
+send `Referrer-Policy: same-origin`, Django's default, so the token never leaves the site.
 
 ## Passwords
 
@@ -98,10 +110,16 @@ these checks, as Django does: choose a strong password.
 ## Invites
 
 `createsuperuser` makes the first superuser; every other account staff add is an invite. In `/admin/`,
-staff enter only an email: they never choose or see the password. The account has no usable password,
-so it can't log in, and the worker emails a link to set one. The link works once and expires after
-`DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`. Setting the password confirms the email; staff are then sent to
-`/admin/`, consumers to `/accounts/login/`.
+staff enter only an email: they never choose or see the password. A superuser can also tick "Staff
+status" to invite a colleague as staff in one step; other staff can invite consumers only. The account
+has no usable password, so it can't log in, and the worker emails a link to set one. The link works
+once, only on the invite page (its token is signed differently from a reset link's), stops working if
+the account is deactivated, and expires after `DJANGO_EMAIL_LINK_TIMEOUT_HOURS`. Setting the password
+confirms the email; staff are then sent to `/admin/`, consumers to `/accounts/login/`.
+
+"Staff status" is chosen only here, at invite: on an existing account it's read-only for everyone, so
+an account never moves between staff and consumer. Someone who leaves is deactivated, not demoted. A
+superuser can make a staff account superuser (or back), but never a consumer.
 
 To send a new link, select the accounts in the admin's user list and run "Resend invite". It only
 mails accounts that never set a password; staff who aren't superusers can resend to consumers only,
@@ -115,7 +133,7 @@ ends the same way: the loser gets the same message, never an error page.
 
 After signup, the worker mails a link to confirm the address. The link opens a confirm page, and only
 its button confirms, so mail scanners that open links change nothing. It stops working once used,
-after `DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`, or when the email changes, and every bad link gets the
+after `DJANGO_EMAIL_LINK_TIMEOUT_HOURS`, or when the email changes, and every bad link gets the
 same page.
 
 A consumer can't log in until the email is confirmed. After a correct password they see "Confirm your
@@ -140,9 +158,10 @@ resets a staff password in `/admin/`, and their own with `python manage.py chang
 
 The link opens a page that first moves the token out of the address bar (Django keeps it in the
 session), then asks for the new password. It stops working once used, after
-`DJANGO_PASSWORD_RESET_TIMEOUT_HOURS`, or when the password changes or the user logs in. Setting a new
-password logs out the account's other sessions, confirms the email if it wasn't yet (the link proved
-the inbox), and clears that email's failed logins from that IP. It doesn't log the user in.
+`DJANGO_EMAIL_LINK_TIMEOUT_HOURS`, when the password changes or the user logs in, or when the
+account is deactivated or made staff. Setting a new password logs out the account's other sessions,
+confirms the email if it wasn't yet (the link proved the inbox), and clears that email's failed
+logins from that IP. It doesn't log the user in.
 
 Requests are limited per email and per IP (see Throttling), whether or not the email has an account,
 so the limit reveals nothing either.
@@ -153,6 +172,9 @@ Logins use Django's database sessions. A session ends after `DJANGO_SESSION_IDLE
 request, and `DJANGO_SESSION_ABSOLUTE_HOURS` after login even if active (logging in again restarts
 it). Every request saves the session, which restarts the idle timer. With `DJANGO_HTTPS=true` the
 cookies are named `__Host-sessionid` and `__Host-csrftoken`.
+
+Every response to a logged-in user is sent with `Cache-Control: no-store` (Django's `never_cache`
+headers), so after logout the back button can't show a page from the session.
 
 ## Throttling
 
@@ -230,6 +252,8 @@ Kubernetes CronJob, every 15 minutes).
 
 The client IP is `REMOTE_ADDR`. Behind a proxy or ingress, set uvicorn's `FORWARDED_ALLOW_IPS` to the
 proxy's address so it reads `X-Forwarded-For`; never `*`, which lets clients choose their own IP.
+It's required and checked at startup: unset, every client would share the proxy's IP (one limit for
+all) and HTTPS redirects would loop; a typo would be ignored by uvicorn the same way.
 
 ## Logging
 

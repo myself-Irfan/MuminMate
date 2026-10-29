@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import django_stubs_ext
+from csp.constants import NONE, SELF
 from kombu import Queue
 
 from config.env import Env
@@ -35,6 +36,17 @@ SECURE_HSTS_SECONDS = env.django_hsts_seconds
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env.django_hsts_seconds > 0
 # HSTS preload is near-irreversible and needs a real domain; revisit at release.
 SILENCED_SYSTEM_CHECKS = ["security.W021"]
+# Self-hosted, nothing inline; data: is Pico's SVG icons. Django 6.2 LTS: SECURE_CSP instead.
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "default-src": [SELF],
+        "img-src": [SELF, "data:"],
+        "object-src": [NONE],
+        "base-uri": [NONE],
+        "form-action": [SELF],
+        "frame-ancestors": [NONE],
+    },
+}
 
 INSTALLED_APPS = [
     "config.apps.MuminMateAdminConfig",
@@ -45,6 +57,7 @@ INSTALLED_APPS = [
     "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
     "django.forms",
+    "csp",
     "ninja",
     "django_structlog",
     "core",
@@ -55,12 +68,14 @@ MIDDLEWARE = [
     "core.middleware.RequestIDMiddleware",
     "django_structlog.middlewares.RequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "csp.middleware.CSPMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "users.middleware.SessionTimeoutMiddleware",
+    "users.middleware.AuthenticatedNoStoreMiddleware",
     "users.middleware.ConsumerLoginRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -128,8 +143,10 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Explicit per the Security guide: pickle can run code.
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_IGNORE_RESULT = True
-# A killed worker's task is redelivered: tasks must be idempotent.
+# Acked after running, so a crash mid-task redelivers it: tasks must be idempotent.
 CELERY_TASK_ACKS_LATE = True
+# A killed child process (OOM, SIGKILL) is otherwise acked; quorum delivery-limit 20 bounds loops.
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
 # Else the redelivered copy runs alongside this one.
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
@@ -142,10 +159,8 @@ LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
 
 THROTTLE_LIMITS = env.django_throttle_limits
-# Also the lifetime of email verification links (users/tokens.py).
-PASSWORD_RESET_TIMEOUT = int(
-    timedelta(hours=env.django_password_reset_timeout_hours).total_seconds()
-)
+# Django's name; it sets every email link's lifetime (all generators subclass its own).
+PASSWORD_RESET_TIMEOUT = int(timedelta(hours=env.django_email_link_timeout_hours).total_seconds())
 # HttpUrl renders a trailing "/"; links append reverse() paths.
 PUBLIC_URL = str(env.django_public_url).rstrip("/")
 
@@ -198,6 +213,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGGING = build_logging(env.django_logging)
 configure_structlog()
-# Its ipware trusts X-Forwarded-For; core.signals binds REMOTE_ADDR instead.
+# Its ipware trusts X-Forwarded-For; core.signals binds get_client_ip() instead.
 DJANGO_STRUCTLOG_IP_LOGGING_ENABLED = False
 DJANGO_STRUCTLOG_CELERY_ENABLED = True

@@ -5,6 +5,7 @@ from asgiref.sync import sync_to_async
 from django.contrib.auth.backends import ModelBackend
 from django.http import HttpRequest
 
+from core.client_ip import get_client_ip
 from users.models import User
 from users.services.login_failure_service import LoginFailureService
 from users.services.user_service import UserService
@@ -25,15 +26,16 @@ class ThrottledModelBackend(ModelBackend):
             username = kwargs.get(User.USERNAME_FIELD)
         if username is None or password is None:
             return None
-        ip = request.META.get("REMOTE_ADDR") if request else None
+        ip = get_client_ip(request) if request else None
         failures = LoginFailureService()
         attempt = failures.record_attempt(username, ip)
+        email_digest = digest_email(username)
         # Refused before super(): no Argon2 hash, nothing kept.
         if attempt is None:
             logger.warning(
                 "login_failed",
                 reason="throttled",
-                email_digest=digest_email(username),
+                email_digest=email_digest,
                 user_id=None,
             )
             return None
@@ -43,7 +45,7 @@ class ThrottledModelBackend(ModelBackend):
             logger.warning(
                 "login_failed",
                 reason="bad_credentials",
-                email_digest=digest_email(username),
+                email_digest=email_digest,
                 user_id=UserService().get_id_by_email(username),
             )
         else:

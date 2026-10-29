@@ -1,3 +1,4 @@
+import ipaddress
 from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Literal, Self
@@ -5,6 +6,7 @@ from urllib.parse import quote
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     HttpUrl,
     NonNegativeInt,
@@ -18,12 +20,16 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from users.limits import ThrottleLimits
 
 
-class LogSettings(BaseModel, extra="forbid", frozen=True):
+class LogSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     format: Literal["json", "console"]
 
 
-class EmailSettings(BaseModel, extra="forbid", frozen=True):
+class EmailSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     host: Annotated[str, Field(min_length=1)]
     port: Annotated[int, Field(ge=1, le=65535)]
     use_tls: bool
@@ -44,27 +50,30 @@ class Env(BaseSettings):
     django_hsts_seconds: NonNegativeInt
     django_session_idle_minutes: PositiveInt
     django_session_absolute_hours: PositiveInt
-    django_password_reset_timeout_hours: PositiveInt
+    django_email_link_timeout_hours: PositiveInt
     django_logging: LogSettings
     django_throttle_limits: ThrottleLimits
     django_email: EmailSettings
     django_email_host_user: str
     django_email_host_password: SecretStr
 
-    postgres_db: str
-    postgres_user: str
+    postgres_db: Annotated[str, Field(min_length=1)]
+    postgres_user: Annotated[str, Field(min_length=1)]
     postgres_password: Annotated[SecretStr, Field(min_length=1)]
-    postgres_host: str
+    postgres_host: Annotated[str, Field(min_length=1)]
     # 0 only as the Dockerfile's build-time placeholder.
     postgres_port: Annotated[int, Field(ge=0, le=65535)]
     postgres_pool_timeout_seconds: PositiveInt
 
-    rabbitmq_host: str
+    rabbitmq_host: Annotated[str, Field(min_length=1)]
     # 0 only as the Dockerfile's build-time placeholder.
     rabbitmq_port: Annotated[int, Field(ge=0, le=65535)]
     rabbitmq_user: Annotated[str, Field(min_length=1)]
     rabbitmq_password: Annotated[SecretStr, Field(min_length=1)]
     rabbitmq_vhost: Annotated[str, Field(min_length=1)]
+
+    # uvicorn reads it itself; checked here because it keeps a typo as a never-matching literal.
+    forwarded_allow_ips: str
 
     @property
     def rabbitmq_url(self) -> str:
@@ -84,6 +93,17 @@ class Env(BaseSettings):
         if url.path != "/" or url.query or url.fragment or url.username or url.password:
             raise ValueError("must be scheme://host[:port] only")
         return url
+
+    @field_validator("forwarded_allow_ips")
+    @classmethod
+    def check_forwarded_allow_ips_are_addresses(cls, value: str) -> str:
+        for entry in value.split(","):
+            host = entry.strip()
+            if "/" in host:
+                ipaddress.ip_network(host)
+            else:
+                ipaddress.ip_address(host)
+        return value
 
     @model_validator(mode="after")
     def check_session_absolute_covers_idle(self) -> Self:

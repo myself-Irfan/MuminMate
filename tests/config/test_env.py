@@ -89,13 +89,14 @@ def env_vars(
         "DJANGO_HSTS_SECONDS": "0",
         "DJANGO_SESSION_IDLE_MINUTES": "180",
         "DJANGO_SESSION_ABSOLUTE_HOURS": "12",
-        "DJANGO_PASSWORD_RESET_TIMEOUT_HOURS": "72",
+        "DJANGO_EMAIL_LINK_TIMEOUT_HOURS": "72",
         "DJANGO_LOGGING": json.dumps(logging_data),
         "DJANGO_THROTTLE_LIMITS": json.dumps(throttle_limits_data),
         "DJANGO_PUBLIC_URL": "https://muminmate.example",
         "DJANGO_EMAIL": json.dumps(email_data),
         "DJANGO_EMAIL_HOST_USER": "",
         "DJANGO_EMAIL_HOST_PASSWORD": "",
+        "FORWARDED_ALLOW_IPS": "10.0.0.1, 10.42.0.0/16, ::1",
     }
 
     for key, value in values.items():
@@ -106,6 +107,18 @@ def test_allowed_hosts_trimmed_when_padded() -> None:
     env = Env(_env_file=None)
 
     assert env.django_allowed_hosts == ["example.com", "api.example.com"]
+
+
+def test_forwarded_allow_ips_accepts_addresses_and_networks() -> None:
+    assert Env(_env_file=None).forwarded_allow_ips == "10.0.0.1, 10.42.0.0/16, ::1"
+
+
+# uvicorn's default would trust only localhost, so every client shares the proxy's IP.
+def test_env_fails_when_forwarded_allow_ips_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FORWARDED_ALLOW_IPS")
+
+    with pytest.raises(ValidationError, match="forwarded_allow_ips"):
+        Env(_env_file=None)
 
 
 def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,15 +137,25 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         ("POSTGRES_PORT", "65536"),
         ("RABBITMQ_PORT", "-1"),
         ("RABBITMQ_PORT", "65536"),
+        ("POSTGRES_DB", ""),
+        ("POSTGRES_USER", ""),
         ("POSTGRES_PASSWORD", ""),
+        ("POSTGRES_HOST", ""),
+        ("RABBITMQ_HOST", ""),
         ("RABBITMQ_USER", ""),
         ("RABBITMQ_PASSWORD", ""),
         ("RABBITMQ_VHOST", ""),
         ("DJANGO_SESSION_IDLE_MINUTES", "0"),
         ("DJANGO_SESSION_ABSOLUTE_HOURS", "0"),
-        ("DJANGO_PASSWORD_RESET_TIMEOUT_HOURS", "0"),
+        ("DJANGO_EMAIL_LINK_TIMEOUT_HOURS", "0"),
         # Idle is 180 minutes in env_vars, so 2 hours is shorter.
         ("DJANGO_SESSION_ABSOLUTE_HOURS", "2"),
+        ("FORWARDED_ALLOW_IPS", ""),
+        ("FORWARDED_ALLOW_IPS", "*"),
+        ("FORWARDED_ALLOW_IPS", "10.0.0.1, *"),
+        # uvicorn would keep these as literals that never match: trust silently off.
+        ("FORWARDED_ALLOW_IPS", "10.0.0.1/8"),
+        ("FORWARDED_ALLOW_IPS", "proxy.local"),
     ],
     ids=[
         "pool_timeout_zero",
@@ -141,14 +164,23 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         "postgres_port_too_big",
         "rabbitmq_port_negative",
         "rabbitmq_port_too_big",
+        "postgres_db_empty",
+        "postgres_user_empty",
         "postgres_password_empty",
+        "postgres_host_empty",
+        "rabbitmq_host_empty",
         "rabbitmq_user_empty",
         "rabbitmq_password_empty",
         "rabbitmq_vhost_empty",
         "session_idle_zero",
         "session_absolute_zero",
-        "password_reset_timeout_zero",
+        "email_link_timeout_zero",
         "session_absolute_shorter_than_idle",
+        "forwarded_allow_ips_empty",
+        "forwarded_allow_ips_any",
+        "forwarded_allow_ips_any_in_list",
+        "forwarded_allow_ips_host_bits_set",
+        "forwarded_allow_ips_hostname",
     ],
 )
 def test_env_fails_when_value_invalid(

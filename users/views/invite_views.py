@@ -6,8 +6,10 @@ from django.db import transaction
 from django.http import HttpResponse
 from django.urls import reverse
 
+from core.client_ip import get_client_ip
 from users.models import User
 from users.services.invite_service import InviteService
+from users.tokens import InviteTokenGenerator
 
 # Lets SetPasswordForm[User] run; built into Django 6.0 (d0c8f89), delete on upgrade.
 django_stubs_ext.monkeypatch(extra_classes=[SetPasswordMixin])
@@ -17,11 +19,12 @@ django_stubs_ext.monkeypatch(extra_classes=[SetPasswordMixin])
 class ConsumerInviteConfirmView(auth_views.PasswordResetConfirmView):
     template_name = "registration/invite/confirm.html"
     url_name = "invite_confirm"
+    token_generator = InviteTokenGenerator()
 
     def form_valid(self, form: SetPasswordForm[User]) -> HttpResponse:
         with transaction.atomic():
             response = super().form_valid(form)
-            InviteService().accept(form.user, self.request.META.get("REMOTE_ADDR"))
+            InviteService().accept(form.user, get_client_ip(self.request))
         messages.success(self.request, "Your password is set. Log in to continue.")
         return response
 

@@ -31,11 +31,33 @@ def password_payload() -> dict[str, str]:
     }
 
 
-def test_add_form_has_only_email(admin_client: Client) -> None:
+def test_add_form_lets_superuser_choose_staff(admin_client: Client) -> None:
     response = admin_client.get("/admin/users/user/add/")
 
     assert response.status_code == HTTPStatus.OK
+    assert set(response.context["adminform"].form.fields) == {"email", "is_staff"}
+
+
+def test_add_form_has_only_email_for_staff(staff_client: Client) -> None:
+    response = staff_client.get("/admin/users/user/add/")
+
     assert set(response.context["adminform"].form.fields) == {"email"}
+
+
+def test_add_invites_staff_when_superuser_ticks_it(admin_client: Client) -> None:
+    admin_client.post(
+        "/admin/users/user/add/", {"email": "colleague@example.com", "is_staff": "on"}
+    )
+
+    user = User.objects.get(email="colleague@example.com")
+    assert user.is_staff
+    assert not user.has_usable_password()
+
+
+def test_add_ignores_staff_flag_from_staff(staff_client: Client) -> None:
+    staff_client.post("/admin/users/user/add/", {"email": "new@example.com", "is_staff": "on"})
+
+    assert not User.objects.get(email="new@example.com").is_staff
 
 
 def test_add_invites_user_without_password(admin_client: Client) -> None:
@@ -55,7 +77,7 @@ def test_add_creates_user_through_invite_service(
 
     admin_client.post("/admin/users/user/add/", {"email": "Irfan@Example.com"})
 
-    invite.assert_called_once_with(email="irfan@example.com")
+    invite.assert_called_once_with(email="irfan@example.com", is_staff=False)
 
 
 def test_add_queues_invite_email(
@@ -140,7 +162,33 @@ def test_change_fails_when_email_taken_in_other_case(
     assert other.email == "other@example.com"
 
 
-def test_change_grants_staff_when_superuser(admin_client: Client, consumer_user: User) -> None:
+def test_change_form_staff_disabled_even_for_superuser(
+    admin_client: Client, consumer_user: User
+) -> None:
+    response = admin_client.get(f"/admin/users/user/{consumer_user.pk}/change/")
+
+    assert response.context["adminform"].form.fields["is_staff"].disabled
+
+
+def test_change_form_superuser_editable_for_staff(
+    admin_client: Client, other_staff_user: User
+) -> None:
+    response = admin_client.get(f"/admin/users/user/{other_staff_user.pk}/change/")
+
+    assert not response.context["adminform"].form.fields["is_superuser"].disabled
+
+
+def test_change_form_superuser_disabled_for_consumer(
+    admin_client: Client, consumer_user: User
+) -> None:
+    response = admin_client.get(f"/admin/users/user/{consumer_user.pk}/change/")
+
+    assert response.context["adminform"].form.fields["is_superuser"].disabled
+
+
+def test_change_ignores_staff_flag_when_superuser(
+    admin_client: Client, consumer_user: User
+) -> None:
     response = admin_client.post(
         f"/admin/users/user/{consumer_user.pk}/change/",
         {"email": "irfan@example.com", "is_active": "on", "is_staff": "on"},
@@ -148,23 +196,46 @@ def test_change_grants_staff_when_superuser(admin_client: Client, consumer_user:
 
     assert response.status_code == HTTPStatus.FOUND
     consumer_user.refresh_from_db()
-    assert consumer_user.is_staff
+    assert not consumer_user.is_staff
 
 
-def test_change_fails_when_superuser_loses_staff(admin_client: Client, password: str) -> None:
-    other = User.objects.create_superuser(email="other@example.com", password=password)
-
+def test_change_keeps_staff_when_superuser_omits_flag(
+    admin_client: Client, other_staff_user: User
+) -> None:
     response = admin_client.post(
-        f"/admin/users/user/{other.pk}/change/",
-        {"email": "other@example.com", "is_active": "on", "is_superuser": "on"},
+        f"/admin/users/user/{other_staff_user.pk}/change/",
+        {"email": "peer@example.com", "is_active": "on"},
     )
 
-    assert response.status_code == HTTPStatus.OK
-    assert response.context["adminform"].form.non_field_errors() == [
-        "A superuser must also be staff."
-    ]
-    other.refresh_from_db()
-    assert other.is_staff
+    assert response.status_code == HTTPStatus.FOUND
+    other_staff_user.refresh_from_db()
+    assert other_staff_user.is_staff
+
+
+def test_change_grants_superuser_to_staff_when_superuser(
+    admin_client: Client, other_staff_user: User
+) -> None:
+    response = admin_client.post(
+        f"/admin/users/user/{other_staff_user.pk}/change/",
+        {"email": "peer@example.com", "is_active": "on", "is_superuser": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    other_staff_user.refresh_from_db()
+    assert other_staff_user.is_superuser
+
+
+def test_change_ignores_superuser_flag_for_consumer(
+    admin_client: Client, consumer_user: User
+) -> None:
+    response = admin_client.post(
+        f"/admin/users/user/{consumer_user.pk}/change/",
+        {"email": "irfan@example.com", "is_active": "on", "is_superuser": "on"},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    consumer_user.refresh_from_db()
+    assert not consumer_user.is_superuser
 
 
 def test_change_form_privilege_fields_read_only_when_staff(

@@ -18,7 +18,8 @@ from users.tasks import (
     send_verification_email,
 )
 
-type EmailTaskCase = tuple[Task[[int], None], str]
+type EmailTask = Task[[int], None]
+type EmailTaskCase = tuple[EmailTask, str]
 
 
 @pytest.fixture(
@@ -34,25 +35,24 @@ def email_task(request: pytest.FixtureRequest) -> EmailTaskCase:
     return task_and_service_method
 
 
-def test_verification_email_task_sends_mail(unverified_consumer_user: User) -> None:
-    send_verification_email(unverified_consumer_user.pk)
+@pytest.mark.parametrize(
+    ("task", "user_fixture"),
+    [
+        (send_verification_email, "unverified_consumer_user"),
+        (send_password_reset_email, "consumer_user"),
+        (send_invite_email, "invited_user"),
+    ],
+    ids=["verification", "password_reset", "invite"],
+)
+def test_email_task_sends_mail(
+    request: pytest.FixtureRequest, task: EmailTask, user_fixture: str
+) -> None:
+    user: User = request.getfixturevalue(user_fixture)
+
+    task(user.pk)
 
     [sent] = mail.outbox
-    assert sent.to == [unverified_consumer_user.email]
-
-
-def test_password_reset_email_task_sends_mail(consumer_user: User) -> None:
-    send_password_reset_email(consumer_user.pk)
-
-    [sent] = mail.outbox
-    assert sent.to == [consumer_user.email]
-
-
-def test_invite_email_task_sends_mail(invited_user: User) -> None:
-    send_invite_email(invited_user.pk)
-
-    [sent] = mail.outbox
-    assert sent.to == [invited_user.email]
+    assert sent.to == [user.email]
 
 
 @pytest.mark.parametrize(
@@ -102,3 +102,9 @@ def test_email_task_time_and_retry_limits(email_task: EmailTaskCase) -> None:
     task, _ = email_task
 
     assert (task.soft_time_limit, task.time_limit, task.max_retries) == (30, 60, 5)
+
+
+def test_email_task_redelivered_when_worker_lost(email_task: EmailTaskCase) -> None:
+    task, _ = email_task
+
+    assert (task.acks_late, task.reject_on_worker_lost) == (True, True)

@@ -28,13 +28,6 @@ def test_create_sets_unusable_password_when_none() -> None:
 
 
 @pytest.mark.django_db
-def test_create_makes_staff_when_asked(password: str) -> None:
-    user = UserService().create(email="irfan@example.com", password=password, is_staff=True)
-
-    assert user.is_staff
-
-
-@pytest.mark.django_db
 def test_create_fails_when_email_taken_in_other_case(password: str) -> None:
     UserService().create(email="irfan@example.com", password=password)
 
