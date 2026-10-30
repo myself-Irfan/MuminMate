@@ -46,6 +46,15 @@ def test_url_token_masked_in_event_and_request() -> None:
     )
 
 
+# CommonMiddleware redirects it to the slash version, so the token is still valid.
+def test_url_token_masked_when_trailing_slash_missing() -> None:
+    event = {"event": "request_started", "request": "GET /accounts/verify/MQ/abc123"}
+
+    masked = mask_url_tokens(None, "info", event)
+
+    assert masked["request"] == "GET /accounts/verify/MQ/*****"
+
+
 def test_url_token_path_read_from_stdlib_record(rf: RequestFactory) -> None:
     event = {
         "event": "Forbidden (CSRF cookie not set.): /accounts/verify/MQ/abc123/",

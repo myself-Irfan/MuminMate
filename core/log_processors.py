@@ -2,10 +2,10 @@ from http import HTTPStatus
 
 import structlog
 from django.http import HttpRequest
-from django.urls import Resolver404, resolve
 from structlog.typing import EventDict, WrappedLogger
 
 from core.masking import DataMasker
+from core.url_tokens import find_url_token
 
 
 def mask_sensitive(_logger: WrappedLogger, _method_name: str, event_dict: EventDict) -> EventDict:
@@ -23,10 +23,7 @@ def mask_url_tokens(_logger: WrappedLogger, _method_name: str, event_dict: Event
     path = _logged_path(event_dict)
     if path is None:
         return event_dict
-    try:
-        token = resolve(path).kwargs.get("token")
-    except Resolver404:
-        return event_dict
+    token = find_url_token(path)
     if token:
         for key in ("event", "request"):
             if isinstance(event_dict.get(key), str):

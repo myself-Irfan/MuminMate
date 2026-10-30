@@ -62,11 +62,13 @@ INSTALLED_APPS = [
     "django_structlog",
     "core",
     "users",
+    "audit",
 ]
 
 MIDDLEWARE = [
     "core.middleware.RequestIDMiddleware",
     "django_structlog.middlewares.RequestMiddleware",
+    "audit.middleware.AuditMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "csp.middleware.CSPMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -112,8 +114,21 @@ DATABASES = {
         "HOST": env.postgres_host,
         "PORT": env.postgres_port,
         "OPTIONS": {"pool": {"timeout": env.postgres_pool_timeout_seconds}},
-    }
+    },
+    "log": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env.log_postgres_db,
+        "USER": env.log_postgres_user,
+        "PASSWORD": env.log_postgres_password.get_secret_value(),
+        "HOST": env.log_postgres_host,
+        "PORT": env.log_postgres_port,
+        "OPTIONS": {"pool": {"timeout": env.postgres_pool_timeout_seconds}},
+        # Django's default makes it wait for default's test db, which a log-only run never creates.
+        "TEST": {"DEPENDENCIES": []},
+    },
 }
+DATABASE_ROUTERS = ["config.db_router.LogRouter"]
+AUDIT_RETENTION_DAYS = env.django_audit_retention_days
 
 CELERY_BROKER_URL = env.rabbitmq_url
 CELERY_TASK_DEFAULT_QUEUE = "default"
@@ -124,6 +139,7 @@ CELERY_TASK_DEFAULT_ROUTING_KEY = "task.default"
 CELERY_TASK_QUEUES = [
     Queue("default", routing_key="task.#", queue_arguments={"x-queue-type": "quorum"}),
     Queue("email", routing_key="email.#", queue_arguments={"x-queue-type": "quorum"}),
+    Queue("audit", routing_key="audit.#", queue_arguments={"x-queue-type": "quorum"}),
 ]
 CELERY_TASK_ROUTES = {
     "users.tasks.send_verification_email": {"queue": "email", "routing_key": "email.verification"},
@@ -132,13 +148,18 @@ CELERY_TASK_ROUTES = {
         "routing_key": "email.password_reset",
     },
     "users.tasks.send_invite_email": {"queue": "email", "routing_key": "email.invite"},
+    "audit.tasks.record_incoming_event": {"queue": "audit", "routing_key": "audit.incoming"},
 }
 # A typo'd queue name fails at publish instead of creating a queue no worker reads.
 CELERY_TASK_CREATE_MISSING_QUEUES = False
 # RabbitMQ 4.3 refuses Celery's default control and event queues.
 CELERY_CONTROL_QUEUE_EXCLUSIVE = True
 CELERY_EVENT_QUEUE_EXCLUSIVE = True
-CELERY_BROKER_TRANSPORT_OPTIONS = {"confirm_publish": True}
+# A blocked broker fails a publish in ~4 s, not hangs: the timeouts bound the channel close.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"confirm_publish": True, "read_timeout": 1, "write_timeout": 1}
+CELERY_TASK_PUBLISH_RETRY = True
+# One immediate retry on a new connection (a restarted broker), still bounded under an alarm.
+CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0}
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Explicit per the Security guide: pickle can run code.
 CELERY_ACCEPT_CONTENT = ["json"]

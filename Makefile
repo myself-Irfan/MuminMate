@@ -4,7 +4,7 @@ run:
 	uv run python manage.py runserver
 
 worker:
-	docker compose up --build --watch worker
+	docker compose up --build --watch worker worker-audit
 
 up:
 	docker compose up -d --wait db rabbitmq mailpit
