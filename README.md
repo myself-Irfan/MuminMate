@@ -16,8 +16,17 @@ uv run pre-commit install
 cp .env.example .env   # fill in the secrets; DJANGO_DEBUG=true locally
 make up
 uv run python manage.py migrate
+uv run python manage.py migrate --database=log   # Django migrates one database per run
 uv run python manage.py check
 uv run python manage.py createsuperuser   # the first superuser; logs in with email, no username
+```
+
+On an empty volume, `make up` creates both databases: the main one (`POSTGRES_DB`) and the log
+database (`LOG_POSTGRES_DB`, by `docker/postgres/create-log-db.sh`). A volume made before the log
+database existed needs it once:
+
+```bash
+docker compose exec db sh /docker-entrypoint-initdb.d/create-log-db.sh
 ```
 
 ## Configuration
@@ -35,6 +44,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_SESSION_IDLE_MINUTES` | Log out after this long without a request (`180`) |
 | `DJANGO_SESSION_ABSOLUTE_HOURS` | Log out this long after login, even if active (`12`); at least the idle value |
 | `DJANGO_EMAIL_LINK_TIMEOUT_HOURS` | Email links (verification, password reset, invite) expire after this long (`72`); a change also applies to links already sent |
+| `DJANGO_AUDIT_RETENTION_DAYS` | `deleteexpiredauditevents` deletes request audit rows older than this (`90`) |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
 | `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup and verification email limits as one-line JSON (see Throttling below) |
 | `DJANGO_EMAIL` | Mail server as one-line JSON (see Email below) |
@@ -46,6 +56,11 @@ Every variable is required; the app refuses to start if one is missing.
 | `POSTGRES_HOST` | `localhost` from the host; the service name inside compose |
 | `POSTGRES_PORT` | Host port mapped to the db container |
 | `POSTGRES_POOL_TIMEOUT_SECONDS` | Wait for a pooled connection; keep below the readiness probe timeout (`5`) |
+| `LOG_POSTGRES_DB` | Log database name (request audit), kept apart from the main database |
+| `LOG_POSTGRES_USER` | Log database user |
+| `LOG_POSTGRES_PASSWORD` | Log database password |
+| `LOG_POSTGRES_HOST` | Log database host; locally the same server as `POSTGRES_HOST` |
+| `LOG_POSTGRES_PORT` | Log database port; locally the same as `POSTGRES_PORT` |
 | `RABBITMQ_HOST` | Celery broker (RabbitMQ) host: `localhost` from the host; the service name inside compose |
 | `RABBITMQ_PORT` | Host port mapped to the broker's AMQP port (`5673` locally, so a local RabbitMQ keeps 5672) |
 | `RABBITMQ_USER` | Broker user, created by the container on first start |
@@ -59,9 +74,9 @@ Every variable is required; the app refuses to start if one is missing.
 |---|---|
 | `make up` | Start the database, RabbitMQ and Mailpit (for `make run`, `make worker` and `make test`) |
 | `make down` | Stop all containers |
-| `make stack` | Build and run the production image (db, rabbitmq, mailpit, migrate, worker, web) on :8000 |
+| `make stack` | Build and run the production image (db, rabbitmq, mailpit, migrate, worker, worker-audit, web) on :8000 |
 | `make run` | Start the dev server on :8000 (API docs at `/api/docs`) |
-| `make worker` | Run the Celery worker in Docker, attached; rebuilds it when a file changes (Compose Watch) |
+| `make worker` | Run the Celery workers (`worker`, `worker-audit`) in Docker, attached; rebuilds them when a file changes (Compose Watch) |
 | `make lint` | Lint and format check |
 | `make format` | Auto-fix lint and formatting |
 | `make typecheck` | Type check (mypy, strict) |
@@ -311,7 +326,8 @@ and `ip` unless the worker logged it):
 | `invite_accepted` | info | `user_id` |
 | `invite_email_skipped` | info | `user_id` (worker: the account is inactive, deleted or already has a password) |
 | `request_limited` | warning | `scope` (`password_reset`, `signup`, `verification_email`); a request refused by its limit (no `user_id`: no account lookup) |
-| `verification_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed` | error | `user_id`; the broker couldn't be reached, so no mail was queued (traceback attached) |
+| `verification_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed` | error | `user_id`; the broker couldn't be reached or was blocking publishes, so no mail was queued (traceback attached) |
+| `audit_event_queue_failed` | error | `event_type` (`REQUEST`, `RESPONSE`); the same, for a request audit row (see Request audit) |
 
 `email_digest` is the same keyed hash the `throttle_events` table stores, so many failures on one
 address show up even when it has no account; the email itself is never logged. The pages look the
@@ -321,6 +337,39 @@ Reading logs: the `make run` terminal; `docker compose logs -f web` for `make st
 `kubectl logs -f deploy/<name>` (`--previous` after a crash) in Kubernetes. To see the production
 format locally, set `"format":"json"` and pipe through `jq`. The app writes no log files (Twelve-Factor
 XI): storing and searching logs is the platform's job.
+
+## Request audit
+
+Every request leaves two rows in `incoming_request_response_events`, in its own database
+(`LOG_POSTGRES_*`): a REQUEST row when it arrives (method, path, `url_name`, headers, `data` with
+the query `params` and `body`) and a RESPONSE row when it's answered (status, headers, `data` with
+the `body`, `duration_ms`, error, `user_id`), paired by `request_id`. Both keep context such as the
+client `ip` in `additional_info`. A request that never finished has only its REQUEST row.
+
+- **Masking:** as in the logs: secret keys, query parameters and URL tokens (also inside the
+  `Referer` and `Location` headers) become `***`. Cookies a response sets aren't stored at all.
+- **Bodies:** JSON and form data masked; anything else (files, binary, HTML pages, text that isn't
+  JSON Postgres can store, such as `NaN`) as `{content_type, size}`, since it can't be masked; anything over 64 KB (or over
+  Django's upload limit) as `{content_type, size, truncated: true}`; a streamed response as
+  `{content_type}`.
+- **User:** only on the RESPONSE row (the REQUEST row is built before login is checked); a logout is
+  recorded with the user who logged out.
+- **Errors:** a crash's RESPONSE row has `error_type` and the traceback, never local variables.
+- **Skipped:** only a clean, successful hit on a health probe or a static file (GET, no query, no
+  body, `200`/`304`). Anything else on those paths is recorded.
+
+The web process queues each row on the `audit` queue and `worker-audit` writes it. A row is written
+at most once: if the broker can't take it, `audit_event_queue_failed` is logged, the page answers as
+usual, and that web process drops audit rows for the next 10 s instead of waiting on each one; if the worker dies mid-write, that row is lost; an unreachable log database is retried 3
+times. The rows hold personal data (IPs, emails in bodies), so restrict who can read them. To look:
+
+```
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$LOG_POSTGRES_DB"'
+select type, method, path, status, duration_ms, user_id from incoming_request_response_events order by id desc limit 10;
+```
+
+`python manage.py deleteexpiredauditevents` deletes rows older than `DJANGO_AUDIT_RETENTION_DAYS`,
+5,000 at a time; run it daily.
 
 ## Background jobs
 
@@ -336,19 +385,32 @@ To debug a task with breakpoints, stop the Docker worker (`docker compose stop w
 process. Don't run the default pool on macOS: with Celery 5.6.3 and billiard 4.3 every task fails
 there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in Celery 5.7).
 
-- Each kind of task has its own queue (`email` for now), declared in `CELERY_TASK_QUEUES` and routed
+- Each kind of task has its own queue (`email`, `audit`), declared in `CELERY_TASK_QUEUES` and routed
   in `CELERY_TASK_ROUTES`, on one topic exchange (`tasks`). Celery also requires a `default` queue: it
   catches tasks without a route, and a test fails for any task that has none. The `worker` service
-  consumes the light queues (`-Q default,email`); heavy ones get their own worker.
+  consumes the light queues (`-Q default,email`); `worker-audit` takes `audit`, which every request
+  feeds, so a slow log database never holds up the mail worker. The broker is shared, though: until
+  the deployment caps `audit` with a RabbitMQ policy, a huge audit backlog could raise a broker alarm
+  that blocks mail too. Each audit write is limited to 30 seconds.
 - Mail is sent by tasks (`send_verification_email`, `send_password_reset_email`, `send_invite_email`): each retries temporary SMTP errors with growing,
   randomised waits (up to 5 times, about 12 minutes on average) and gives up at once on a refused
   address or a wrong login. Each attempt is limited to 60 seconds.
-- Tasks take ids, never personal data, and are queued only after the transaction commits. A task
-  runs again if its worker is killed or loses the broker mid-task, so every task must be safe to run
-  twice; one whose process alone crashes (out of memory, say) is marked failed instead.
+- Tasks take ids, never personal data, and are queued only after the transaction commits (except
+  the audit task: it carries the masked row at once, see Request audit). A task
+  runs again if its worker or worker process is killed (out of memory, say) or loses the broker
+  mid-task, so every task must be safe to run twice; RabbitMQ drops one after 20 deliveries. The
+  audit task is the exception: it's acknowledged on arrival, so it never runs twice and a crash loses
+  that row.
 - Messages are JSON only, and task results aren't stored.
 - Queues are quorum queues (RabbitMQ's durable, replicated type), and queuing a task waits until
   the broker has stored it. Tasks survive a broker restart (a volume keeps its data).
+- If the broker can't be reached or blocks publishing (a memory or disk alarm), queuing gives up
+  after about 4 seconds instead of hanging the request: the failure is logged (`*_queue_failed`)
+  and the page answers as usual. To see it, block publishing with `docker compose exec rabbitmq
+  rabbitmqctl set_vm_memory_high_watermark absolute 1MB`, sign up, and look for the log line; undo
+  it with `set_vm_memory_high_watermark 0.6`.
+- A failed publish is retried once, at once, on a new connection, so after a broker restart the
+  first task or audit row still goes through.
 - Worker lines use the `DJANGO_LOGGING` format and level (`celery worker -l` is ignored). A task's
   lines carry its `task_id` and the `request_id` and `user_id` of the request that queued it
   (`task_enqueued`, `task_started`, `task_succeeded`, `task_failed`).
@@ -360,8 +422,9 @@ Processes, all from the one image:
 | Process | Command | Queues | Concurrency |
 |---|---|---|---|
 | web | `uvicorn config.asgi:application --host 0.0.0.0 --port 8000` | — | 1; scale by replicas |
-| migrate | `python manage.py migrate --noinput` (one-shot, before web and workers) | — | — |
+| migrate | `python manage.py migrate --noinput`, then the same with `--database=log` (one-shot, before web and workers) | — | — |
 | worker | `celery -A config --quiet worker -Q default,email -n default@%h --concurrency 2` | `default`, `email` | 2; scale by replicas |
+| worker-audit | `celery -A config --quiet worker -Q audit -n audit@%h --concurrency 1` | `audit` | 1; scale by replicas |
 
 ## Email
 
@@ -414,7 +477,7 @@ every Monday, so a new advisory fails `audit` or the image scan even in a week n
 | `lint` | pre-commit (ruff, zizmor on the workflows, whitespace) and mypy |
 | `audit` | pip-audit on the locked dependencies |
 | `test` | migration check, tests with coverage (at least 95%); coverage table in the run summary, HTML coverage as an artifact |
-| `image` | builds the Docker image (layers cached between runs), runs `check --deploy` in it with production settings, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, a worker answering a ping) |
+| `image` | builds the Docker image (layers cached between runs), runs `check --deploy` in it with production settings, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, each worker answering a ping) |
 | `load_test` | runs `load-tests/login.js` against that image; p95 table in the run summary, k6's HTML report as an artifact |
 | `checks` | passes only if every job above passed; the one required check |
 
@@ -436,6 +499,7 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ```
 config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
+audit/     request audit: middleware, row building, the audit task and its own database
 users/     custom user model (email login, no username), manager, admin, signup, email verification,
            invites, password reset, login/logout, session timeouts, throttling, auth event logging
 templates/ shared layout (base.html), partials, email layouts and the home page

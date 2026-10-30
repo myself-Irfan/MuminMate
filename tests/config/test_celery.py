@@ -62,6 +62,18 @@ def test_publish_waits_for_broker_confirm() -> None:
     assert app.conf.broker_transport_options["confirm_publish"] is True
 
 
+# Under a memory alarm, a publish without them hangs.
+def test_publish_fails_fast_when_broker_blocks() -> None:
+    options = app.conf.broker_transport_options
+
+    assert (options["read_timeout"], options["write_timeout"]) == (1, 1)
+
+
+def test_publish_retries_once_at_once() -> None:
+    assert app.conf.task_publish_retry is True
+    assert app.conf.task_publish_retry_policy == {"max_retries": 1, "interval_start": 0}
+
+
 def test_control_and_event_queues_are_exclusive() -> None:
     assert (app.conf.control_queue_exclusive, app.conf.event_queue_exclusive) == (True, True)
 

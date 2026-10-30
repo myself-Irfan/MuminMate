@@ -1,6 +1,7 @@
 import io
 import logging.config
 from collections.abc import Iterator
+from unittest.mock import Mock
 
 import pytest
 from django.conf import settings as django_settings
@@ -20,6 +21,14 @@ def plain_static_storage(settings: Settings) -> None:
         **settings.STORAGES,
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
+
+
+# Every request is audited: without this, the suite fills the real broker's audit queue.
+@pytest.fixture(autouse=True)
+def audit_publish(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr("audit.services.audit_queue_service.record_incoming_event.delay", delay)
+    return delay
 
 
 @pytest.fixture
