@@ -23,12 +23,15 @@ RUN DJANGO_SECRET_KEY=collectstatic DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS= \
     DJANGO_PUBLIC_URL=http://localhost \
     DJANGO_HTTPS=false DJANGO_HSTS_SECONDS=0 DJANGO_SESSION_IDLE_MINUTES=1 \
     DJANGO_SESSION_ABSOLUTE_HOURS=1 DJANGO_EMAIL_LINK_TIMEOUT_HOURS=1 \
+    DJANGO_AUDIT_RETENTION_DAYS=1 \
     DJANGO_LOGGING='{"level":"INFO","format":"json"}' \
     DJANGO_THROTTLE_LIMITS='{"login":{"email_ip_max_events":1,"email_ip_window_seconds":1,"ip_max_events":1,"ip_window_seconds":1,"email_max_events":1,"email_window_seconds":1,"email_backoff_seconds":1},"password_reset":{"email_max_events":1,"email_window_seconds":2,"email_cooldown_seconds":1,"ip_max_events":1,"ip_window_seconds":1},"signup":{"ip_max_events":1,"ip_window_seconds":1},"verification_email":{"email_max_events":1,"email_window_seconds":2,"email_cooldown_seconds":1}}' \
     DJANGO_EMAIL='{"host":"collectstatic","port":25,"use_tls":false,"timeout_seconds":1,"default_from_email":"collectstatic"}' \
     DJANGO_EMAIL_HOST_USER= DJANGO_EMAIL_HOST_PASSWORD= \
     POSTGRES_DB=collectstatic POSTGRES_USER=collectstatic \
     POSTGRES_PASSWORD=collectstatic POSTGRES_HOST=collectstatic POSTGRES_PORT=0 POSTGRES_POOL_TIMEOUT_SECONDS=1 \
+    LOG_POSTGRES_DB=collectstatic LOG_POSTGRES_USER=collectstatic LOG_POSTGRES_PASSWORD=collectstatic \
+    LOG_POSTGRES_HOST=collectstatic LOG_POSTGRES_PORT=0 \
     RABBITMQ_HOST=collectstatic RABBITMQ_PORT=0 RABBITMQ_USER=collectstatic RABBITMQ_PASSWORD=collectstatic \
     RABBITMQ_VHOST=collectstatic FORWARDED_ALLOW_IPS=127.0.0.1 \
     .venv/bin/python manage.py collectstatic --noinput

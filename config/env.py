@@ -51,6 +51,7 @@ class Env(BaseSettings):
     django_session_idle_minutes: PositiveInt
     django_session_absolute_hours: PositiveInt
     django_email_link_timeout_hours: PositiveInt
+    django_audit_retention_days: PositiveInt
     django_logging: LogSettings
     django_throttle_limits: ThrottleLimits
     django_email: EmailSettings
@@ -64,6 +65,13 @@ class Env(BaseSettings):
     # 0 only as the Dockerfile's build-time placeholder.
     postgres_port: Annotated[int, Field(ge=0, le=65535)]
     postgres_pool_timeout_seconds: PositiveInt
+
+    log_postgres_db: Annotated[str, Field(min_length=1)]
+    log_postgres_user: Annotated[str, Field(min_length=1)]
+    log_postgres_password: Annotated[SecretStr, Field(min_length=1)]
+    log_postgres_host: Annotated[str, Field(min_length=1)]
+    # 0 only as the Dockerfile's build-time placeholder.
+    log_postgres_port: Annotated[int, Field(ge=0, le=65535)]
 
     rabbitmq_host: Annotated[str, Field(min_length=1)]
     # 0 only as the Dockerfile's build-time placeholder.

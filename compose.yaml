@@ -5,6 +5,8 @@ x-app: &app
   environment:
     POSTGRES_HOST: db
     POSTGRES_PORT: "5432"
+    LOG_POSTGRES_HOST: db
+    LOG_POSTGRES_PORT: "5432"
     RABBITMQ_HOST: rabbitmq
     RABBITMQ_PORT: "5672"
     DJANGO_EMAIL: '{"host":"mailpit","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>"}'
@@ -16,12 +18,16 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      LOG_POSTGRES_DB: ${LOG_POSTGRES_DB:?set LOG_POSTGRES_DB in .env}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:?set POSTGRES_PORT in .env}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+      # Runs on an empty volume only; an existing one needs the README's one-time command.
+      - ./docker/postgres/create-log-db.sh:/docker-entrypoint-initdb.d/create-log-db.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      # TCP, not the socket: the first init serves the socket only, before the log db exists.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -53,7 +59,11 @@ services:
 
   migrate:
     <<: *app
-    command: ["python", "manage.py", "migrate", "--noinput"]
+    # Django migrates one database per run; the log db is the second.
+    command:
+      - sh
+      - -c
+      - python manage.py migrate --noinput && python manage.py migrate --noinput --database=log
     depends_on:
       db:
         condition: service_healthy
@@ -77,6 +87,24 @@ services:
     healthcheck:
       # Without --destination, any worker's reply passes.
       test: ["CMD-SHELL", "celery -A config inspect ping --destination default@$$HOSTNAME --timeout 5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker-audit:
+    <<: *app
+    command: ["celery", "-A", "config", "--quiet", "worker", "-Q", "audit", "-n", "audit@%h", "--concurrency", "1"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    develop:
+      watch:
+        - action: rebuild
+          path: .
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping --destination audit@$$HOSTNAME --timeout 5"]
       interval: 30s
       timeout: 10s
       retries: 3
