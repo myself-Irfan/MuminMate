@@ -27,6 +27,12 @@ class EmailVerificationService:
         if RequestLimitService().record_verification_email(user.email):
             transaction.on_commit(partial(self._queue_verification_email, user.pk))
 
+    def reset_verification(self, user: User) -> None:
+        User.objects.filter(pk=user.pk).update(email_verified_at=None)
+        user.email_verified_at = None
+        logger.info("email_verification_reset", user_id=user.pk)
+        self.request_verification(user)
+
     def is_link_valid(self, *, uidb64: str, token: str) -> bool:
         return self._get_user_by_link(uidb64, token) is not None
 

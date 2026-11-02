@@ -9,6 +9,7 @@ from django.utils.translation import ngettext
 
 from users.forms.user_admin_forms import UserAdminChangeForm, UserAdminCreationForm
 from users.models import User
+from users.services.email_change_service import EmailChangeService
 from users.services.invite_service import InviteService
 
 
@@ -52,6 +53,9 @@ class UserAdmin(auth_admin.UserAdmin[User]):
     ) -> None:
         if change:
             super().save_model(request, obj, form, change)
+            # Not changed_data: it compares before the model normalizes the case.
+            if obj.email != form.initial["email"]:
+                EmailChangeService().request_confirmation(obj)
             return
         created = InviteService().invite(email=obj.email, is_staff=obj.is_staff)
         # The admin logs and redirects with obj: give it the new pk.
@@ -59,7 +63,7 @@ class UserAdmin(auth_admin.UserAdmin[User]):
 
     @admin.action(description=_("Resend invite"), permissions=["change"])
     def resend_invite(self, request: HttpRequest, queryset: QuerySet[User]) -> None:
-        pending = queryset.filter(password__startswith=UNUSABLE_PASSWORD_PREFIX)
+        pending = queryset.filter(is_active=True, password__startswith=UNUSABLE_PASSWORD_PREFIX)
         # Non-superusers manage consumers only, as with editing.
         if not request.user.is_superuser:
             pending = pending.filter(is_staff=False, is_superuser=False)

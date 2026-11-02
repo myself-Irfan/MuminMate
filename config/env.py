@@ -51,6 +51,7 @@ class Env(BaseSettings):
     django_session_idle_minutes: PositiveInt
     django_session_absolute_hours: PositiveInt
     django_email_link_timeout_hours: PositiveInt
+    django_password_reset_link_timeout_minutes: PositiveInt
     django_audit_retention_days: PositiveInt
     django_logging: LogSettings
     django_throttle_limits: ThrottleLimits
@@ -119,6 +120,17 @@ class Env(BaseSettings):
         if absolute < timedelta(minutes=self.django_session_idle_minutes):
             raise ValueError(
                 "django_session_absolute_hours must be at least django_session_idle_minutes"
+            )
+        return self
+
+    # The email link timeout caps every link, so a longer reset link would silently be cut.
+    @model_validator(mode="after")
+    def check_reset_link_shorter_than_email_link(self) -> Self:
+        reset_link = timedelta(minutes=self.django_password_reset_link_timeout_minutes)
+        if reset_link >= timedelta(hours=self.django_email_link_timeout_hours):
+            raise ValueError(
+                "django_password_reset_link_timeout_minutes must be shorter than"
+                " django_email_link_timeout_hours"
             )
         return self
 

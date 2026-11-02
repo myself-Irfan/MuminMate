@@ -1,6 +1,8 @@
 import io
+from unittest.mock import Mock
 
 import pytest
+from django.db import DatabaseError
 from django.test import Client
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -8,6 +10,7 @@ from pytest_django.asserts import assertContains, assertTemplateUsed
 
 from tests.logging_support import events
 from users.models import User
+from users.services.invite_service import InviteService
 from users.tokens import ConsumerPasswordResetTokenGenerator, InviteTokenGenerator
 
 
@@ -52,6 +55,22 @@ def test_invite_page_shows_invalid_for_password_reset_token(
     response = client.get(f"/accounts/invite/{uidb64}/{token}/")
 
     assertContains(response, "This invite link is invalid or has expired")
+
+
+def test_invite_keeps_no_password_when_acceptance_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    client: Client,
+    invited_user: User,
+    invite_path: str,
+    password: str,
+) -> None:
+    monkeypatch.setattr(InviteService, "accept", Mock(side_effect=DatabaseError("db gone")))
+
+    with pytest.raises(DatabaseError):
+        set_password(client, invite_path, password)
+
+    invited_user.refresh_from_db()
+    assert not invited_user.has_usable_password()
 
 
 def test_invite_sets_password_and_verifies_email(

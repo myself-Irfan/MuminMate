@@ -180,8 +180,11 @@ LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
 
 THROTTLE_LIMITS = env.django_throttle_limits
-# Django's name; it sets every email link's lifetime (all generators subclass its own).
+# Django's name; it caps every email link (all generators subclass its own).
 PASSWORD_RESET_TIMEOUT = int(timedelta(hours=env.django_email_link_timeout_hours).total_seconds())
+PASSWORD_RESET_LINK_TIMEOUT = int(
+    timedelta(minutes=env.django_password_reset_link_timeout_minutes).total_seconds()
+)
 # HttpUrl renders a trailing "/"; links append reverse() paths.
 PUBLIC_URL = str(env.django_public_url).rstrip("/")
 

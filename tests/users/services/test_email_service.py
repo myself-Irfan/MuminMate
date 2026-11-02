@@ -1,6 +1,14 @@
 import io
 import re
-from smtplib import SMTPRecipientsRefused
+from smtplib import (
+    SMTPAuthenticationError,
+    SMTPDataError,
+    SMTPNotSupportedError,
+    SMTPRecipientsRefused,
+    SMTPResponseException,
+    SMTPSenderRefused,
+    SMTPServerDisconnected,
+)
 from unittest.mock import Mock
 
 import pytest
@@ -134,7 +142,7 @@ def test_password_reset_email_token_valid_for_user(consumer_user: User, public_u
 
 
 def test_password_reset_email_states_link_expiry(settings: Settings, consumer_user: User) -> None:
-    settings.PASSWORD_RESET_TIMEOUT = 600
+    settings.PASSWORD_RESET_LINK_TIMEOUT = 600
 
     EmailService().send_password_reset_email(consumer_user.pk)
 
@@ -266,15 +274,17 @@ def test_invite_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
     assert line["user_id"] == 999_999
 
 
-# The task retries on OSError: a failed send must reach it.
+# The task retries on OSError: a temporary failure must reach it unchanged.
 @pytest.mark.parametrize(
     "error",
     [
-        SMTPRecipientsRefused({"user@example.com": (550, b"No such user")}),
         ConnectionRefusedError(),
         TimeoutError(),
+        SMTPServerDisconnected(),
+        SMTPResponseException(451, b"Try again later"),
+        SMTPRecipientsRefused({"user@example.com": (450, b"Greylisted")}),
     ],
-    ids=["refused", "server_down", "timeout"],
+    ids=["server_down", "timeout", "disconnected", "busy", "greylisted"],
 )
 def test_email_raises_when_mail_server_fails(
     monkeypatch: pytest.MonkeyPatch, unverified_consumer_user: User, error: OSError
@@ -283,3 +293,41 @@ def test_email_raises_when_mail_server_fails(
 
     with pytest.raises(type(error)):
         EmailService().send_verification_email(unverified_consumer_user.pk)
+
+
+# Servers echo the address in their reply, so the log keeps only the code.
+@pytest.mark.parametrize(
+    ("error", "smtp_code"),
+    [
+        (
+            SMTPRecipientsRefused(
+                {"unverified@example.com": (550, b"5.1.1 <unverified@example.com> unknown")}
+            ),
+            550,
+        ),
+        (SMTPSenderRefused(550, b"Sender rejected", "no-reply@example.com"), 550),
+        (SMTPAuthenticationError(535, b"Bad credentials"), 535),
+        (SMTPDataError(554, b"Message to <unverified@example.com> rejected"), 554),
+        (SMTPNotSupportedError(), None),
+    ],
+    ids=["recipient", "sender", "auth", "data", "no_starttls"],
+)
+def test_email_logs_rejected_without_raising_when_mail_server_refuses_for_good(
+    monkeypatch: pytest.MonkeyPatch,
+    json_logs: io.StringIO,
+    unverified_consumer_user: User,
+    error: OSError,
+    smtp_code: int | None,
+) -> None:
+    monkeypatch.setattr(EmailMultiAlternatives, "send", Mock(side_effect=error))
+
+    EmailService().send_verification_email(unverified_consumer_user.pk)
+
+    [line] = events(json_logs, "email_rejected")
+    assert line["level"] == "error"
+    assert (line["user_id"], line["error_type"], line["smtp_code"]) == (
+        unverified_consumer_user.pk,
+        type(error).__name__,
+        smtp_code,
+    )
+    assert unverified_consumer_user.email not in json_logs.getvalue()

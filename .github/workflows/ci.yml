@@ -41,9 +41,10 @@ env:
   DJANGO_SESSION_IDLE_MINUTES: "180"
   DJANGO_SESSION_ABSOLUTE_HOURS: "12"
   DJANGO_EMAIL_LINK_TIMEOUT_HOURS: "72"
+  DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES: "60"
   DJANGO_AUDIT_RETENTION_DAYS: "90"
   DJANGO_LOGGING: '{"level":"INFO","format":"json"}'
-  DJANGO_THROTTLE_LIMITS: '{"login":{"email_ip_max_events":5,"email_ip_window_seconds":900,"ip_max_events":100,"ip_window_seconds":900,"email_max_events":20,"email_window_seconds":3600,"email_backoff_seconds":60},"password_reset":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300,"ip_max_events":100,"ip_window_seconds":3600},"signup":{"ip_max_events":50,"ip_window_seconds":3600},"verification_email":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300}}'
+  DJANGO_THROTTLE_LIMITS: '{"login":{"email_ip_max_events":5,"email_ip_window_seconds":900,"ip_max_events":100,"ip_window_seconds":900,"email_max_events":10,"email_window_seconds":3600,"email_backoff_seconds":60},"password_reset":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300,"ip_max_events":100,"ip_window_seconds":3600},"signup":{"ip_max_events":50,"ip_window_seconds":3600},"verification_email":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300}}'
   DJANGO_EMAIL: '{"host":"localhost","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>"}'
   DJANGO_EMAIL_HOST_USER: ""
   DJANGO_EMAIL_HOST_PASSWORD: ""
@@ -195,6 +196,13 @@ jobs:
           for asset in $assets; do
             curl --fail --silent --show-error --output /dev/null "http://localhost:8000$asset"
           done
+      - name: Smoke Test Server Header
+        run: |
+          headers=$(curl --fail --silent --show-error --output /dev/null --dump-header - \
+            http://localhost:8000/api/health/live)
+          if grep -qi '^server:' <<<"$headers"; then
+            echo "uvicorn announces itself" >&2; exit 1
+          fi
       - name: Upload Image
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:

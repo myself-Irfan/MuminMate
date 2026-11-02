@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest.mock import Mock
 
 import pytest
+from django.core.exceptions import SuspiciousOperation
 from django.utils import timezone
 
 from tests.logging_support import events
@@ -166,9 +167,10 @@ def test_signup_ignores_other_scopes(scope: ThrottleScope) -> None:
     assert RequestLimitService().record_signup("203.0.113.7")
 
 
-# No email and no IP: no rule could ever count the row.
-def test_signup_allowed_and_not_recorded_when_ip_unknown() -> None:
-    assert RequestLimitService().record_signup(None)
+# Signup is limited per IP only: without one it would have no limit at all.
+def test_signup_refused_and_not_recorded_when_ip_unknown() -> None:
+    with pytest.raises(SuspiciousOperation):
+        RequestLimitService().record_signup(None)
 
     assert not ThrottleEvent.objects.exists()
 

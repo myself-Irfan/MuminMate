@@ -13,6 +13,12 @@ from pytest_django import DjangoCaptureOnCommitCallbacks
 from users.admin import UserAdmin
 from users.models import User
 from users.services.invite_service import InviteService
+from users.tokens import (
+    ConsumerPasswordResetTokenGenerator,
+    EmailVerificationTokenGenerator,
+    InviteTokenGenerator,
+    LinkTokenGenerator,
+)
 
 
 @pytest.fixture
@@ -144,6 +150,88 @@ def test_change_normalizes_email(admin_client: Client, consumer_user: User) -> N
     assert response.status_code == HTTPStatus.FOUND
     consumer_user.refresh_from_db()
     assert consumer_user.email == "irfan.new@example.com"
+
+
+def test_change_of_email_resets_verification_and_queues_link(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    verification_email_delay: Mock,
+    admin_client: Client,
+    consumer_user: User,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        admin_client.post(
+            f"/admin/users/user/{consumer_user.pk}/change/",
+            {"email": "new@example.com", "is_active": "on"},
+        )
+
+    consumer_user.refresh_from_db()
+    assert not consumer_user.is_email_verified
+    verification_email_delay.assert_called_once_with(consumer_user.pk)
+
+
+def test_change_of_staff_email_keeps_verification_and_sends_nothing(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    verification_email_delay: Mock,
+    invite_email_delay: Mock,
+    admin_client: Client,
+    staff_user: User,
+) -> None:
+    User.objects.filter(pk=staff_user.pk).update(email_verified_at=timezone.now())
+
+    with django_capture_on_commit_callbacks(execute=True):
+        admin_client.post(
+            f"/admin/users/user/{staff_user.pk}/change/",
+            {"email": "new-staff@example.com", "is_active": "on"},
+        )
+
+    staff_user.refresh_from_db()
+    assert staff_user.email == "new-staff@example.com"
+    assert staff_user.is_email_verified
+    verification_email_delay.assert_not_called()
+    invite_email_delay.assert_not_called()
+
+
+@pytest.mark.usefixtures("verification_email_delay", "invite_email_delay")
+@pytest.mark.parametrize(
+    ("generator", "user_fixture"),
+    [
+        (EmailVerificationTokenGenerator(), "consumer_user"),
+        (ConsumerPasswordResetTokenGenerator(), "consumer_user"),
+        (InviteTokenGenerator(), "invited_user"),
+    ],
+    ids=["verification", "password_reset", "invite"],
+)
+def test_change_of_email_voids_links_sent_to_old_address(
+    request: pytest.FixtureRequest,
+    admin_client: Client,
+    generator: LinkTokenGenerator,
+    user_fixture: str,
+) -> None:
+    user: User = request.getfixturevalue(user_fixture)
+    token = generator.make_token(user)
+    assert generator.check_token(user, token)
+
+    admin_client.post(
+        f"/admin/users/user/{user.pk}/change/", {"email": "new@example.com", "is_active": "on"}
+    )
+
+    user.refresh_from_db()
+    assert user.email == "new@example.com"
+    assert not generator.check_token(user, token)
+
+
+@pytest.mark.parametrize("email", ["irfan@example.com", "IRFAN@Example.com"])
+def test_change_keeps_verification_when_email_same_after_normalizing(
+    verification_email_delay: Mock, admin_client: Client, consumer_user: User, email: str
+) -> None:
+    response = admin_client.post(
+        f"/admin/users/user/{consumer_user.pk}/change/", {"email": email, "is_active": "on"}
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    consumer_user.refresh_from_db()
+    assert consumer_user.is_email_verified
+    verification_email_delay.assert_not_called()
 
 
 def test_change_fails_when_email_taken_in_other_case(
@@ -291,17 +379,45 @@ def test_password_change_forbidden_when_staff_edits_privileged_user(
     assert not privileged_user.check_password(password_payload["password1"])
 
 
-def test_delete_forbidden_when_staff_deletes_privileged_user(
-    staff_client: Client, staff_user: User, privileged_user: User
-) -> None:
+@pytest.fixture
+def delete_user_permission(staff_user: User) -> None:
     staff_user.user_permissions.add(
         Permission.objects.get(content_type__app_label="users", codename="delete_user")
     )
 
+
+@pytest.mark.usefixtures("delete_user_permission")
+def test_delete_forbidden_when_staff_deletes_privileged_user(
+    staff_client: Client, privileged_user: User
+) -> None:
     response = staff_client.post(f"/admin/users/user/{privileged_user.pk}/delete/", {"post": "yes"})
 
     assert response.status_code == HTTPStatus.FORBIDDEN
     assert User.objects.filter(pk=privileged_user.pk).exists()
+
+
+# The changelist's bulk action is a second way to delete; Django checks each selected row.
+@pytest.mark.usefixtures("delete_user_permission")
+def test_bulk_delete_forbidden_when_staff_selects_privileged_user(
+    staff_client: Client, privileged_user: User
+) -> None:
+    response = staff_client.post(
+        "/admin/users/user/",
+        {"action": "delete_selected", "_selected_action": [privileged_user.pk], "post": "yes"},
+    )
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert User.objects.filter(pk=privileged_user.pk).exists()
+
+
+@pytest.mark.usefixtures("delete_user_permission")
+def test_bulk_delete_removes_consumer_when_staff(staff_client: Client, consumer_user: User) -> None:
+    staff_client.post(
+        "/admin/users/user/",
+        {"action": "delete_selected", "_selected_action": [consumer_user.pk], "post": "yes"},
+    )
+
+    assert not User.objects.filter(pk=consumer_user.pk).exists()
 
 
 def test_password_change_sets_password(
@@ -397,6 +513,20 @@ def test_resend_invite_queues_only_for_users_without_password(
         resend_invite(admin_client, invited_user, consumer_user)
 
     invite_email_delay.assert_called_once_with(invited_user.pk)
+
+
+def test_resend_invite_skips_deactivated_invitee(
+    admin_client: Client,
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    invite_email_delay: Mock,
+    invited_user: User,
+) -> None:
+    User.objects.filter(pk=invited_user.pk).update(is_active=False)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        resend_invite(admin_client, invited_user)
+
+    invite_email_delay.assert_not_called()
 
 
 def test_resend_invite_reaches_invited_staff_when_superuser(

@@ -11,12 +11,25 @@ from users.tokens import (
     ConsumerPasswordResetTokenGenerator,
     EmailVerificationTokenGenerator,
     InviteTokenGenerator,
+    LinkTokenGenerator,
 )
 
 
 @pytest.fixture
 def generator() -> EmailVerificationTokenGenerator:
     return EmailVerificationTokenGenerator()
+
+
+def make_token_aged(
+    monkeypatch: pytest.MonkeyPatch, generator: LinkTokenGenerator, user: User, age_seconds: int
+) -> str:
+    issued_at = datetime(2026, 10, 12, 12, 0)
+    monkeypatch.setattr(generator, "_now", Mock(return_value=issued_at))
+    token = generator.make_token(user)
+    monkeypatch.setattr(
+        generator, "_now", Mock(return_value=issued_at + timedelta(seconds=age_seconds))
+    )
+    return token
 
 
 def test_token_valid_for_its_user(
@@ -102,15 +115,60 @@ def test_token_expires_after_password_reset_timeout(
     valid: bool,
 ) -> None:
     settings.PASSWORD_RESET_TIMEOUT = 600
-    issued_at = datetime(2026, 10, 12, 12, 0)
-    monkeypatch.setattr(generator, "_now", Mock(return_value=issued_at))
-    token = generator.make_token(consumer_user)
 
-    monkeypatch.setattr(
-        generator, "_now", Mock(return_value=issued_at + timedelta(seconds=age_seconds))
-    )
+    token = make_token_aged(monkeypatch, generator, consumer_user, age_seconds)
 
     assert generator.check_token(consumer_user, token) is valid
+
+
+@pytest.mark.parametrize(("age_seconds", "valid"), [(600, True), (601, False)])
+def test_consumer_password_reset_token_expires_after_reset_link_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    consumer_user: User,
+    age_seconds: int,
+    valid: bool,
+) -> None:
+    settings.PASSWORD_RESET_TIMEOUT = 3600
+    settings.PASSWORD_RESET_LINK_TIMEOUT = 600
+    generator = ConsumerPasswordResetTokenGenerator()
+
+    token = make_token_aged(monkeypatch, generator, consumer_user, age_seconds)
+
+    assert generator.check_token(consumer_user, token) is valid
+
+
+@pytest.mark.parametrize("generator_class", [EmailVerificationTokenGenerator, InviteTokenGenerator])
+def test_token_outlives_reset_link_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    invited_user: User,
+    generator_class: type[LinkTokenGenerator],
+) -> None:
+    settings.PASSWORD_RESET_TIMEOUT = 3600
+    settings.PASSWORD_RESET_LINK_TIMEOUT = 600
+    generator = generator_class()
+
+    token = make_token_aged(monkeypatch, generator, invited_user, 601)
+
+    assert generator.check_token(invited_user, token)
+
+
+@pytest.mark.parametrize(
+    ("generator", "lifetime"),
+    [
+        (EmailVerificationTokenGenerator(), "1\xa0hour"),
+        (InviteTokenGenerator(), "1\xa0hour"),
+        (ConsumerPasswordResetTokenGenerator(), "10\xa0minutes"),
+    ],
+)
+def test_describe_lifetime_states_own_timeout(
+    settings: Settings, generator: LinkTokenGenerator, lifetime: str
+) -> None:
+    settings.PASSWORD_RESET_TIMEOUT = 3600
+    settings.PASSWORD_RESET_LINK_TIMEOUT = 600
+
+    assert generator.describe_lifetime() == lifetime
 
 
 def test_consumer_password_reset_key_salt_differs_from_django() -> None:

@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import structlog
 from django.conf import settings
+from django.core.exceptions import SuspiciousOperation
 from django.db.models import Count, Max, Q
 from django.utils import timezone
 
@@ -17,27 +18,33 @@ logger = structlog.get_logger(__name__)
 class RequestLimitService:
     def record_password_reset(self, email: str, ip: str | None) -> bool:
         limits = settings.THROTTLE_LIMITS.password_reset
-        event = self._create(ThrottleScope.PASSWORD_RESET, email, ip)
+        event = self.record(ThrottleScope.PASSWORD_RESET, email, ip)
         if self._is_email_limited(event, limits) or self._is_ip_limited(event, limits):
             return self._refuse(event)
         return True
 
+    # Signup is limited per IP only, so without an address it refuses (Django: 400).
     def record_signup(self, ip: str | None) -> bool:
         if ip is None:
-            return True
-        event = self._create(ThrottleScope.SIGNUP, None, ip)
+            raise SuspiciousOperation("Signup needs a client address to apply its limit.")
+        event = self.record(ThrottleScope.SIGNUP, None, ip)
         if self._is_ip_limited(event, settings.THROTTLE_LIMITS.signup):
             return self._refuse(event)
         return True
 
     def record_verification_email(self, email: str) -> bool:
-        event = self._create(ThrottleScope.VERIFICATION_EMAIL, email, None)
+        event = self.record(ThrottleScope.VERIFICATION_EMAIL, email, None)
         if self._is_email_limited(event, settings.THROTTLE_LIMITS.verification_email):
             return self._refuse(event)
         return True
 
-    def record(self, scope: ThrottleScope, email: str, ip: str | None) -> ThrottleEvent:
-        return self._create(scope, email, ip)
+    # Every throttle row is built here: email hashed, IP masked.
+    def record(self, scope: ThrottleScope, email: str | None, ip: str | None) -> ThrottleEvent:
+        return ThrottleEvent.objects.create(
+            scope=scope,
+            email_digest=digest_email(email) if email is not None else "",
+            ip=mask_ip(ip) if ip is not None else None,
+        )
 
     # Rows past their scope's longest window only hold personal data.
     def delete_expired(self) -> int:
@@ -63,13 +70,6 @@ class RequestLimitService:
         )
         deleted, _ = ThrottleEvent.objects.filter(expired).delete()
         return deleted
-
-    def _create(self, scope: ThrottleScope, email: str | None, ip: str | None) -> ThrottleEvent:
-        return ThrottleEvent.objects.create(
-            scope=scope,
-            email_digest=digest_email(email) if email is not None else "",
-            ip=mask_ip(ip) if ip is not None else None,
-        )
 
     def _refuse(self, event: ThrottleEvent) -> bool:
         event.delete()

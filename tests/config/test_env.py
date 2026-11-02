@@ -27,7 +27,7 @@ def throttle_limits_data() -> dict[str, Any]:
             "email_ip_window_seconds": 900,
             "ip_max_events": 100,
             "ip_window_seconds": 900,
-            "email_max_events": 20,
+            "email_max_events": 10,
             "email_window_seconds": 3600,
             "email_backoff_seconds": 60,
         },
@@ -95,6 +95,7 @@ def env_vars(
         "DJANGO_SESSION_IDLE_MINUTES": "180",
         "DJANGO_SESSION_ABSOLUTE_HOURS": "12",
         "DJANGO_EMAIL_LINK_TIMEOUT_HOURS": "72",
+        "DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES": "60",
         "DJANGO_AUDIT_RETENTION_DAYS": "90",
         "DJANGO_LOGGING": json.dumps(logging_data),
         "DJANGO_THROTTLE_LIMITS": json.dumps(throttle_limits_data),
@@ -161,6 +162,9 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         ("DJANGO_SESSION_ABSOLUTE_HOURS", "0"),
         ("DJANGO_EMAIL_LINK_TIMEOUT_HOURS", "0"),
         ("DJANGO_AUDIT_RETENTION_DAYS", "0"),
+        ("DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES", "0"),
+        # Email links last 72 hours in env_vars: 4320 minutes.
+        ("DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES", "4320"),
         # Idle is 180 minutes in env_vars, so 2 hours is shorter.
         ("DJANGO_SESSION_ABSOLUTE_HOURS", "2"),
         ("FORWARDED_ALLOW_IPS", ""),
@@ -195,6 +199,8 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         "session_absolute_zero",
         "email_link_timeout_zero",
         "audit_retention_zero",
+        "reset_link_timeout_zero",
+        "reset_link_not_shorter_than_email_link",
         "session_absolute_shorter_than_idle",
         "forwarded_allow_ips_empty",
         "forwarded_allow_ips_any",
@@ -242,7 +248,7 @@ def test_throttle_limits_parsed_from_json() -> None:
             email_ip_window_seconds=900,
             ip_max_events=100,
             ip_window_seconds=900,
-            email_max_events=20,
+            email_max_events=10,
             email_window_seconds=3600,
             email_backoff_seconds=60,
         ),
@@ -304,6 +310,17 @@ def test_env_fails_when_cooldown_not_shorter_than_window(
     monkeypatch.setenv("DJANGO_THROTTLE_LIMITS", json.dumps(throttle_limits_data))
 
     with pytest.raises(ValidationError, match="email_cooldown_seconds must be shorter"):
+        Env(_env_file=None)
+
+
+@pytest.mark.parametrize("backoff_seconds", [3600, 3601])
+def test_env_fails_when_login_backoff_not_shorter_than_window(
+    monkeypatch: pytest.MonkeyPatch, throttle_limits_data: dict[str, Any], backoff_seconds: int
+) -> None:
+    throttle_limits_data["login"]["email_backoff_seconds"] = backoff_seconds
+    monkeypatch.setenv("DJANGO_THROTTLE_LIMITS", json.dumps(throttle_limits_data))
+
+    with pytest.raises(ValidationError, match="email_backoff_seconds must be shorter"):
         Env(_env_file=None)
 
 
