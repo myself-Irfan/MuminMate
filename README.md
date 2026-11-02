@@ -43,7 +43,8 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_HSTS_SECONDS` | HSTS max-age; `0` locally, start production at `3600` |
 | `DJANGO_SESSION_IDLE_MINUTES` | Log out after this long without a request (`180`) |
 | `DJANGO_SESSION_ABSOLUTE_HOURS` | Log out this long after login, even if active (`12`); at least the idle value |
-| `DJANGO_EMAIL_LINK_TIMEOUT_HOURS` | Email links (verification, password reset, invite) expire after this long (`72`); a change also applies to links already sent |
+| `DJANGO_EMAIL_LINK_TIMEOUT_HOURS` | Verification and invite links expire after this long (`72`); a change also applies to links already sent |
+| `DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES` | Password reset links expire after this long (`60`); shorter than the email link timeout, and a change also applies to links already sent |
 | `DJANGO_AUDIT_RETENTION_DAYS` | `deleteexpiredauditevents` deletes request audit rows older than this (`90`) |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
 | `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup and verification email limits as one-line JSON (see Throttling below) |
@@ -102,6 +103,10 @@ Every error an API endpoint raises is RFC 9457 Problem+JSON (`application/proble
 failed field's `loc`, `msg` and `type`, never the submitted value. Unknown `/api/` paths and wrong
 methods still get Django's HTML 404 and 405.
 
+The health endpoints check the `Host` header like every other page. A Kubernetes probe sends the
+pod's IP as the host, which isn't in `DJANGO_ALLOWED_HOSTS`, so it would get a `400`: set the
+probe's `httpHeaders` to `Host: <public host>`. Never add the pod IP or `*` to the allowed hosts.
+
 ## Access
 
 Deny by default. Every page requires login (Django's `LoginRequiredMiddleware`, extended in
@@ -137,8 +142,13 @@ an account never moves between staff and consumer. Someone who leaves is deactiv
 superuser can make a staff account superuser (or back), but never a consumer.
 
 To send a new link, select the accounts in the admin's user list and run "Resend invite". It only
-mails accounts that never set a password; staff who aren't superusers can resend to consumers only,
-as with editing.
+mails active accounts that never set a password; staff who aren't superusers can resend to
+consumers only, as with editing.
+
+Changing a consumer's email in the admin makes it unconfirmed again: the new address gets a
+confirmation link. An invitee who never set a password, staff included, gets the invite again
+instead. Staff with a password get nothing: `/admin/` doesn't check confirmation. Links sent to the
+old address stop working either way. A change of letter case only is no change.
 
 ## Signup
 
@@ -173,10 +183,11 @@ resets a staff password in `/admin/`, and their own with `python manage.py chang
 
 The link opens a page that first moves the token out of the address bar (Django keeps it in the
 session), then asks for the new password. It stops working once used, after
-`DJANGO_EMAIL_LINK_TIMEOUT_HOURS`, when the password changes or the user logs in, or when the
-account is deactivated or made staff. Setting a new password logs out the account's other sessions,
-confirms the email if it wasn't yet (the link proved the inbox), and clears that email's failed
-logins from that IP. It doesn't log the user in.
+`DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES` (shorter than other links: it can take over the
+account), when the password changes or the user logs in, or when the account is deactivated or
+made staff. Setting a new password logs out the account's other sessions, confirms the email if it
+wasn't yet (the link proved the inbox), and clears that email's failed logins from that IP. It
+doesn't log the user in.
 
 Requests are limited per email and per IP (see Throttling), whether or not the email has an account,
 so the limit reveals nothing either.
@@ -196,8 +207,8 @@ headers), so after logout the back button can't show a page from the session.
 `DJANGO_THROTTLE_LIMITS` holds every limit, one key per scope: `login` (failed logins),
 `password_reset`, `signup` and `verification_email` (confirmation links). It's JSON on one line, two
 levels deep: each scope holds flat numbers named `<rule>_max_events` within `<rule>_window_seconds`
-(sliding windows, in seconds). Every value must be a positive integer, a cooldown shorter than its
-window, and unknown or missing keys stop the app at startup.
+(sliding windows, in seconds). Every value must be a positive integer, a cooldown or backoff shorter
+than its window, and unknown or missing keys stop the app at startup.
 
 ### Login
 
@@ -207,7 +218,7 @@ Expanded, the `login` part of `.env.example` is:
 {
   "email_ip_max_events": 5, "email_ip_window_seconds": 900,
   "ip_max_events": 100, "ip_window_seconds": 900,
-  "email_max_events": 20, "email_window_seconds": 3600, "email_backoff_seconds": 60
+  "email_max_events": 10, "email_window_seconds": 3600, "email_backoff_seconds": 60
 }
 ```
 
@@ -220,6 +231,9 @@ The limits apply to both logins (`/accounts/login/` and `/admin/`) and to `authe
 A refused attempt looks like a wrong password, skips the password check and isn't counted, so waiting
 works unless someone keeps guessing. Unknown emails count too. A successful login (or a password reset
 or accepted invite) clears only that email's failures from that IP. IPv6 addresses count per `/64`.
+A client address that isn't an IP (a misconfigured proxy passing `X-Forwarded-For` through) gets a
+400 on the limited pages, never a skipped limit; the request and audit logs keep the raw value. A
+signup without any client address is refused the same way: its only limit is per IP.
 Each attempt is saved before the password hash and counted with itself, so a burst of parallel
 guesses can't all pass during the slow hash; it stays as the failure unless the login succeeds.
 
@@ -316,6 +330,7 @@ and `ip` unless the worker logged it):
 | `signup_refused` | info | `reason` (`email_taken`), `user_id` of the existing account |
 | `verification_email_skipped` | info | `user_id` (worker: the account was deactivated, deleted or confirmed before the mail went out) |
 | `email_verified` | info | `user_id` (from a confirm link, a completed password reset or an accepted invite) |
+| `email_verification_reset` | info | `user_id` (staff changed the email in the admin; a new link is queued) |
 | `email_verification_refused` | warning | `user_id` (always `null`: a bad link names no account we can trust) |
 | `password_reset_requested` | info | `user_id` (`null` when no eligible account matches: unknown, inactive or without a password) |
 | `password_reset_refused` | warning | `reason` (`privileged_account`), `user_id` |
@@ -326,6 +341,7 @@ and `ip` unless the worker logged it):
 | `invite_accepted` | info | `user_id` |
 | `invite_email_skipped` | info | `user_id` (worker: the account is inactive, deleted or already has a password) |
 | `request_limited` | warning | `scope` (`password_reset`, `signup`, `verification_email`); a request refused by its limit (no `user_id`: no account lookup) |
+| `email_rejected` | error | `user_id`, `error_type`, `smtp_code` (worker: the mail server refused for good, 5xx or no STARTTLS; not retried; no traceback, the server's reply echoes the address) |
 | `verification_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed` | error | `user_id`; the broker couldn't be reached or was blocking publishes, so no mail was queued (traceback attached) |
 | `audit_event_queue_failed` | error | `event_type` (`REQUEST`, `RESPONSE`); the same, for a request audit row (see Request audit) |
 
@@ -393,8 +409,10 @@ there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in C
   the deployment caps `audit` with a RabbitMQ policy, a huge audit backlog could raise a broker alarm
   that blocks mail too. Each audit write is limited to 30 seconds.
 - Mail is sent by tasks (`send_verification_email`, `send_password_reset_email`, `send_invite_email`): each retries temporary SMTP errors with growing,
-  randomised waits (up to 5 times, about 12 minutes on average) and gives up at once on a refused
-  address or a wrong login. Each attempt is limited to 60 seconds.
+  randomised waits (up to 5 times, about 12 minutes on average): dropped connections, timeouts and
+  the server's "try later" answers (4xx). A permanent refusal (5xx: a refused address, a rejected
+  message, a wrong login) or a server without STARTTLS isn't retried: it's logged once as
+  `email_rejected`. Each attempt is limited to 60 seconds.
 - Tasks take ids, never personal data, and are queued only after the transaction commits (except
   the audit task: it carries the masked row at once, see Request audit). A task
   runs again if its worker or worker process is killed (out of memory, say) or loses the broker
@@ -421,7 +439,7 @@ Processes, all from the one image:
 
 | Process | Command | Queues | Concurrency |
 |---|---|---|---|
-| web | `uvicorn config.asgi:application --host 0.0.0.0 --port 8000` | — | 1; scale by replicas |
+| web | `uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --no-server-header` (OWASP: no `Server` header) | — | 1; scale by replicas |
 | migrate | `python manage.py migrate --noinput`, then the same with `--database=log` (one-shot, before web and workers) | — | — |
 | worker | `celery -A config --quiet worker -Q default,email -n default@%h --concurrency 2` | `default`, `email` | 2; scale by replicas |
 | worker-audit | `celery -A config --quiet worker -Q audit -n audit@%h --concurrency 1` | `audit` | 1; scale by replicas |
@@ -477,7 +495,7 @@ every Monday, so a new advisory fails `audit` or the image scan even in a week n
 | `lint` | pre-commit (ruff, zizmor on the workflows, whitespace) and mypy |
 | `audit` | pip-audit on the locked dependencies |
 | `test` | migration check, tests with coverage (at least 95%); coverage table in the run summary, HTML coverage as an artifact |
-| `image` | builds the Docker image (layers cached between runs), runs `check --deploy` in it with production settings, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, each worker answering a ping) |
+| `image` | builds the Docker image (layers cached between runs), runs `check --deploy` in it with production settings, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, no `Server` header, each worker answering a ping) |
 | `load_test` | runs `load-tests/login.js` against that image; p95 table in the run summary, k6's HTML report as an artifact |
 | `checks` | passes only if every job above passed; the one required check |
 

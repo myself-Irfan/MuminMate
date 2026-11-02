@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 import pytest
 from django.test import Client
 from django.utils.encoding import force_bytes
@@ -33,6 +35,15 @@ def invited_user(db: None) -> User:
 def privileged_user(request: pytest.FixtureRequest) -> User:
     user: User = request.getfixturevalue(request.param)
     return user
+
+
+@pytest.fixture
+def verification_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr(
+        "users.services.email_verification_service.send_verification_email.delay", delay
+    )
+    return delay
 
 
 @pytest.fixture

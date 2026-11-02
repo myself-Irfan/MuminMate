@@ -15,15 +15,6 @@ def login_payload(consumer_user: User, password: str) -> dict[str, str]:
     return {"username": consumer_user.email, "password": password}
 
 
-@pytest.fixture
-def verification_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
-    delay = Mock()
-    monkeypatch.setattr(
-        "users.services.email_verification_service.send_verification_email.delay", delay
-    )
-    return delay
-
-
 @pytest.mark.django_db
 def test_login_page_title_names_page_then_site(client: Client) -> None:
     response = client.get("/accounts/login/")
@@ -31,21 +22,18 @@ def test_login_page_title_names_page_then_site(client: Client) -> None:
     assertContains(response, "<title>Log in - MuminMate</title>", html=True)
 
 
-@pytest.mark.django_db
 def test_login_page_email_field_is_email_type(client: Client) -> None:
     response = client.get("/accounts/login/")
 
     assertContains(response, 'type="email" name="username"')
 
 
-@pytest.mark.django_db
 def test_login_page_links_staff_to_admin_login(client: Client) -> None:
     response = client.get("/accounts/login/")
 
     assertContains(response, 'href="/admin/login/"')
 
 
-@pytest.mark.django_db
 def test_login_page_links_to_signup(client: Client) -> None:
     response = client.get("/accounts/login/")
 

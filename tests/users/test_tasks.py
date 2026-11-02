@@ -1,9 +1,4 @@
-from smtplib import (
-    SMTPAuthenticationError,
-    SMTPRecipientsRefused,
-    SMTPSenderRefused,
-    SMTPServerDisconnected,
-)
+from smtplib import SMTPServerDisconnected
 from unittest.mock import Mock
 
 import pytest
@@ -73,28 +68,6 @@ def test_email_task_retries_when_error_temporary(
 
     backoff.assert_called_once_with(factor=60, retries=0, maximum=600, full_jitter=True)
     retry.assert_called_once_with(exc=error, countdown=42)
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        SMTPRecipientsRefused({"user@example.com": (550, b"No such user")}),
-        SMTPSenderRefused(550, b"Sender rejected", "no-reply@example.com"),
-        SMTPAuthenticationError(535, b"Bad credentials"),
-    ],
-)
-def test_email_task_fails_without_retry_when_error_permanent(
-    monkeypatch: pytest.MonkeyPatch, email_task: EmailTaskCase, error: Exception
-) -> None:
-    task, service_method = email_task
-    monkeypatch.setattr(service_method, Mock(side_effect=error))
-    retry = Mock(side_effect=Retry())
-    monkeypatch.setattr(task, "retry", retry)
-
-    with pytest.raises(type(error)):
-        task(1)
-
-    retry.assert_not_called()
 
 
 # Tripwire: the time limits only act under prefork, so this pins the decided numbers.

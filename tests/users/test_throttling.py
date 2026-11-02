@@ -1,8 +1,12 @@
 import re
+from http import HTTPStatus
 
 import pytest
+from django.core.exceptions import SuspiciousOperation
+from django.test import Client
 from pytest_django import Settings
 
+from users.models import ThrottleEvent, User
 from users.throttling import digest_email, mask_ip
 
 
@@ -47,3 +51,42 @@ def test_mask_ip_matches_within_same_ipv6_64() -> None:
 
 def test_mask_ip_differs_when_ipv6_64_differs() -> None:
     assert mask_ip("2001:db8:1:2::1") != mask_ip("2001:db8:1:3::1")
+
+
+# uvicorn takes the address from X-Forwarded-For without checking it is one.
+def test_mask_ip_raises_when_address_not_ip() -> None:
+    with pytest.raises(SuspiciousOperation):
+        mask_ip("banana")
+
+
+# Fails closed: without an IP every per-IP limit would count nothing.
+@pytest.mark.usefixtures("login_limits", "request_limits")
+@pytest.mark.parametrize(
+    ("path", "data"),
+    [
+        ("/accounts/login/", {"username": "irfan@example.com", "password": "anything"}),
+        ("/accounts/password-reset/", {"email": "irfan@example.com"}),
+        ("/accounts/signup/", {"email": "new@example.com"}),
+    ],
+    ids=["login", "password_reset", "signup"],
+)
+def test_limited_page_refuses_when_client_address_not_ip(
+    client: Client, consumer_user: User, path: str, data: dict[str, str]
+) -> None:
+    response = client.post(path, data, REMOTE_ADDR="banana")
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert not ThrottleEvent.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("request_limits")
+def test_signup_refused_when_client_address_missing(client: Client) -> None:
+    response = client.post(
+        "/accounts/signup/",
+        {"email": "new@example.com", "password1": "x", "password2": "x"},
+        REMOTE_ADDR=None,
+    )
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert not User.objects.filter(email="new@example.com").exists()

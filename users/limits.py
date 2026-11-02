@@ -15,6 +15,13 @@ class LoginLimits(BaseModel):
     email_window_seconds: PositiveInt
     email_backoff_seconds: PositiveInt
 
+    # The last failure is always within the window, so a longer backoff would lock the email.
+    @model_validator(mode="after")
+    def _validate_backoff_within_window(self) -> Self:
+        if self.email_backoff_seconds >= self.email_window_seconds:
+            raise ValueError("email_backoff_seconds must be shorter than email_window_seconds")
+        return self
+
 
 class PasswordResetLimits(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)

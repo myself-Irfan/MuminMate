@@ -21,52 +21,47 @@ api = NinjaAPI(
 api.add_router("/health", health_router)
 
 
-def problem_response(request: HttpRequest, problem: ProblemOut) -> HttpResponse:
-    response = api.create_response(request, problem.model_dump(), status=problem.status)
+# RFC 9457 §4.2.1: with type about:blank, the title is the status phrase.
+def problem_response(
+    request: HttpRequest,
+    status: HTTPStatus,
+    detail: str,
+    *,
+    problem_type: str = ProblemError.type,
+    errors: list[FieldErrorOut] | None = None,
+) -> HttpResponse:
+    problem = ProblemOut(type=problem_type, title=status.phrase, status=status, detail=detail)
+    if errors is not None:
+        problem = ValidationProblemOut(**problem.model_dump(), errors=errors)
+    response = api.create_response(request, problem.model_dump(), status=status)
     response["Content-Type"] = "application/problem+json"
     return response
 
 
 @api.exception_handler(ProblemError)
 def render_problem(request: HttpRequest, exc: ProblemError) -> HttpResponse:
-    return problem_response(
-        request,
-        ProblemOut(type=exc.type, title=exc.status.phrase, status=exc.status, detail=exc.detail),
-    )
+    return problem_response(request, exc.status, exc.detail, problem_type=exc.type)
 
 
 @api.exception_handler(HttpError)
 def render_http_error(request: HttpRequest, exc: HttpError) -> HttpResponse:
-    status = HTTPStatus(exc.status_code)
-    return problem_response(
-        request,
-        ProblemOut(type=ProblemError.type, title=status.phrase, status=status, detail=exc.message),
-    )
+    return problem_response(request, HTTPStatus(exc.status_code), exc.message)
 
 
 @api.exception_handler(Http404)
 def render_not_found(request: HttpRequest, exc: Http404) -> HttpResponse:
-    status = HTTPStatus.NOT_FOUND
-    return problem_response(
-        request,
-        ProblemOut(type=ProblemError.type, title=status.phrase, status=status, detail="Not found."),
-    )
+    return problem_response(request, HTTPStatus.NOT_FOUND, "Not found.")
 
 
 @api.exception_handler(ValidationError)
 def render_validation_error(request: HttpRequest, exc: ValidationError) -> HttpResponse:
-    status = HTTPStatus.UNPROCESSABLE_CONTENT
     errors = [
         FieldErrorOut(type=error["type"], loc=list(error["loc"]), msg=error["msg"])
         for error in exc.errors
     ]
     return problem_response(
         request,
-        ValidationProblemOut(
-            type=ProblemError.type,
-            title=status.phrase,
-            status=status,
-            detail="The request has invalid fields.",
-            errors=errors,
-        ),
+        HTTPStatus.UNPROCESSABLE_CONTENT,
+        "The request has invalid fields.",
+        errors=errors,
     )

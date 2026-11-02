@@ -16,15 +16,6 @@ from users.services.email_verification_service import EmailVerificationService
 from users.throttling import digest_email
 
 
-@pytest.fixture
-def verification_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
-    delay = Mock()
-    monkeypatch.setattr(
-        "users.services.email_verification_service.send_verification_email.delay", delay
-    )
-    return delay
-
-
 def test_request_verification_queues_email_only_after_commit(
     django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
     verification_email_delay: Mock,
@@ -102,6 +93,33 @@ def test_request_verification_logs_when_email_cannot_be_queued(
 
     [line] = events(json_logs, "verification_email_queue_failed")
     assert (line["level"], line["user_id"]) == ("error", unverified_consumer_user.pk)
+
+
+def test_reset_verification_clears_and_queues_link(
+    django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
+    verification_email_delay: Mock,
+    consumer_user: User,
+) -> None:
+    with django_capture_on_commit_callbacks(execute=True):
+        EmailVerificationService().reset_verification(consumer_user)
+
+    consumer_user.refresh_from_db()
+    assert not consumer_user.is_email_verified
+    verification_email_delay.assert_called_once_with(consumer_user.pk)
+
+
+def test_reset_verification_updates_callers_object(consumer_user: User) -> None:
+    EmailVerificationService().reset_verification(consumer_user)
+
+    assert not consumer_user.is_email_verified
+
+
+@pytest.mark.usefixtures("verification_email_delay")
+def test_reset_verification_logs_reset(json_logs: io.StringIO, consumer_user: User) -> None:
+    EmailVerificationService().reset_verification(consumer_user)
+
+    [line] = events(json_logs, "email_verification_reset")
+    assert line["user_id"] == consumer_user.pk
 
 
 def test_is_link_valid_when_token_matches(
