@@ -1,7 +1,7 @@
 # A stage, not COPY --from=<image>: Dependabot only updates FROM lines.
 FROM ghcr.io/astral-sh/uv:0.12.21@sha256:a7aed3216253ee804de3e2d8afa5073baa1a177335345d43845cd4165e43b711 AS uv
 
-FROM python:3.13.15-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS builder
+FROM python:3.13.17-slim-trixie@sha256:d98cc29d3266e535dd9da1099688d9cb3ca4753813571e071763d17725460962 AS builder
 
 COPY --from=uv /uv /bin/uv
 
@@ -38,7 +38,7 @@ RUN DJANGO_SECRET_KEY=collectstatic DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS= \
 
 RUN .venv/bin/python -m compileall -q .
 
-FROM python:3.13.15-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
+FROM python:3.13.17-slim-trixie@sha256:d98cc29d3266e535dd9da1099688d9cb3ca4753813571e071763d17725460962
 
 # Debian fixes land before the base image is rebuilt; pip is unused at runtime (uv installs).
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes \
