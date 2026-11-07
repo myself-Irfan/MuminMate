@@ -1,0 +1,12 @@
+{% extends "users/account_base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block pane %}
+  <h1>Settings</h1>
+  <p class="note">How you log in.</p>
+  <div class="rows">
+    {% include "users/partials/account_row.html" with name="email" label="Email" value=user.email form=forms.email button="Send link" %}
+    {% include "users/partials/account_row.html" with name="password" label="Password" value="Change your password" form=forms.password button="Change password" %}
+  </div>
+{% endblock %}

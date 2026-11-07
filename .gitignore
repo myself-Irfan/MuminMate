@@ -11,6 +11,7 @@ __pycache__/
 htmlcov/
 coverage.xml
 junit.xml
+.playwright-mcp/
 
 # OS
 .DS_Store

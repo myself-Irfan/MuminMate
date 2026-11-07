@@ -5,6 +5,9 @@
     </ul>
     {% if user.is_authenticated %}
       <ul>
+        {% with name=user.profile.display_name|default:user.email %}
+          <li><a class="account-link" href="{% url 'profile' %}" title="{{ name }}">{{ name }}</a></li>
+        {% endwith %}
         <li>
           <form method="post" action="{% url 'logout' %}">
             {% csrf_token %}

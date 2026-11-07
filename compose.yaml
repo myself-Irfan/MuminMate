@@ -9,7 +9,7 @@ x-app: &app
     LOG_POSTGRES_PORT: "5432"
     RABBITMQ_HOST: rabbitmq
     RABBITMQ_PORT: "5672"
-    DJANGO_EMAIL: '{"host":"mailpit","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>"}'
+    DJANGO_EMAIL: '{"host":"mailpit","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>","support_email":"support@localhost"}'
 
 services:
   db:

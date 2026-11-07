@@ -108,3 +108,51 @@ def test_signup_raises_when_other_integrity_error(
 
     with pytest.raises(IntegrityError, match="other"):
         UserService().signup(email="new@example.com", password=password)
+
+
+# Opening the link proved the new inbox is the user's.
+def test_change_email_saves_normalized_email_marked_verified(
+    unverified_consumer_user: User,
+) -> None:
+    UserService().change_email(unverified_consumer_user, " New@Example.com ")
+
+    unverified_consumer_user.refresh_from_db()
+    assert unverified_consumer_user.email == "new@example.com"
+    assert unverified_consumer_user.is_email_verified
+
+
+def test_change_email_updates_given_user(unverified_consumer_user: User) -> None:
+    changed = UserService().change_email(unverified_consumer_user, "new@example.com")
+
+    assert changed
+    assert unverified_consumer_user.email == "new@example.com"
+    assert unverified_consumer_user.is_email_verified
+
+
+# Another account took the address after the link was sent.
+def test_change_email_raises_when_email_taken(consumer_user: User, staff_user: User) -> None:
+    with pytest.raises(EmailTakenError):
+        UserService().change_email(staff_user, consumer_user.email.upper())
+
+    assert staff_user.email == "staff@example.com"
+    staff_user.refresh_from_db()
+    assert staff_user.email == "staff@example.com"
+
+
+# A second request loaded the user before the first one committed (a double click).
+def test_change_email_changes_nothing_when_email_changed_since_loaded(
+    consumer_user: User,
+) -> None:
+    User.objects.filter(pk=consumer_user.pk).update(email="first@example.com")
+
+    changed = UserService().change_email(consumer_user, "second@example.com")
+
+    assert not changed
+    assert consumer_user.email == "irfan@example.com"
+    consumer_user.refresh_from_db()
+    assert consumer_user.email == "first@example.com"
+
+
+def test_change_email_raises_when_other_integrity_error(consumer_user: User) -> None:
+    with pytest.raises(IntegrityError):
+        UserService().change_email(consumer_user, "\u0131@example.com")

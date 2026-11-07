@@ -1,0 +1,14 @@
+{% extends "registration/base_card.html" %}
+
+{% block title %}Welcome{% endblock %}
+
+{% block card %}
+  <h1>Let&rsquo;s get to know you</h1>
+  <p class="note">A few details help us answer in a way that fits you. You can change them later in your profile.</p>
+  <form method="post">
+    {% csrf_token %}
+    {{ form }}
+    <button type="submit">Save and continue</button>
+  </form>
+  <p class="note"><a href="{{ skip_url }}">Skip</a></p>
+{% endblock %}

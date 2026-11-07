@@ -1,0 +1,13 @@
+{% extends "registration/base_card.html" %}
+
+{% block title %}Change your email{% endblock %}
+
+{% block card %}
+  <h1>Change your email</h1>
+  <p>Change your email from {{ user.email }} to {{ new_email }}?</p>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit">Change email</button>
+  </form>
+  <p><a href="{% url 'account_settings' %}">Cancel</a></p>
+{% endblock %}

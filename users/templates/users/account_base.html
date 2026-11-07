@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="account">
+    <p class="who-name">{{ profile.display_name|default:"Assalamu Alaikum" }}</p>
+    <p class="who-email">{{ user.email }}</p>
+    <nav class="tabs" aria-label="Account pages">
+      <a href="{% url 'profile' %}"{% if request.resolver_match.url_name == "profile" %} aria-current="page"{% endif %}>Profile</a>
+      <a href="{% url 'account_settings' %}"{% if request.resolver_match.url_name == "account_settings" %} aria-current="page"{% endif %}>Settings</a>
+    </nav>
+    {% include "partials/divider.html" %}
+    {% block pane %}{% endblock %}
+  </div>
+{% endblock %}

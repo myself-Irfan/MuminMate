@@ -20,6 +20,7 @@
   --mm-logo: url("../img/logos/rub-el-hizb.svg");
   --mm-font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
   --mm-card-width: 24rem;
+  --mm-account-width: 34rem;
   --pico-border-radius: 0.375rem;
   /* Pico grows the root font to 131% on wide screens; cap it so cards stay compact. */
   --pico-font-size: 100%;
@@ -153,6 +154,20 @@ body > main:has(> .card) {
   mask: var(--mm-logo) center / contain no-repeat;
 }
 
+/* A long name or email is cut with "…", never pushing Log out off a phone screen. */
+nav ul:has(.account-link),
+nav li:has(> .account-link) {
+  min-width: 0;
+}
+
+.account-link {
+  display: block;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 nav form {
   margin: 0;
 }
@@ -165,6 +180,7 @@ nav [type="submit"] {
   margin: 0;
   padding: 0.35rem 0.9rem;
   font-size: 0.875rem;
+  white-space: nowrap;
 }
 
 nav [type="submit"]:hover,
@@ -277,6 +293,119 @@ nav [type="submit"]:focus-visible {
   margin: 1.25rem 0 0;
   font-size: 0.875rem;
   color: var(--pico-muted-color);
+}
+
+/* Account pages: one column, the person's name as the heading. */
+.account {
+  width: 100%;
+  max-width: var(--mm-account-width);
+  margin: clamp(0.5rem, 3vh, 2rem) auto;
+}
+
+.who-name {
+  margin: 0;
+  font-family: var(--mm-font-display);
+  font-size: clamp(2rem, 5vh, 2.75rem);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--pico-h1-color);
+  text-wrap: balance;
+  /* Names run to 150 characters: two lines keep the rows above the fold; Profile shows it whole. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.who-email {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  color: var(--pico-muted-color);
+}
+
+/* Profile | Settings: the current page is underlined in gold. */
+.tabs {
+  justify-content: flex-start;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.tabs a {
+  padding-bottom: 0.25rem;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+  color: var(--pico-muted-color);
+  text-decoration: none;
+}
+
+.tabs a[aria-current="page"] {
+  border-bottom-color: var(--mm-gold);
+  color: var(--pico-h1-color);
+}
+
+.account > .divider {
+  margin: clamp(0.5rem, 2vh, 1rem) 0 clamp(0.75rem, 3vh, 1.5rem);
+}
+
+.account h1 {
+  margin-bottom: 0.2rem;
+  font-size: 1.5rem;
+}
+
+.account > .note {
+  margin: 0 0 1.1rem;
+}
+
+/* The banner takes the account column's width, not the card's. */
+.messages:has(+ .account) {
+  max-width: var(--mm-account-width);
+  margin-bottom: 1.25rem;
+}
+
+/* Profile rows: a line per field that opens its one-field form (native <details>). */
+.rows details {
+  margin: 0;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+
+.rows details:last-of-type {
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.rows summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 1rem;
+  padding: 0.9rem 0;
+  line-height: 1.4;
+}
+
+.rows summary::after {
+  margin-left: auto;
+}
+
+.row-label {
+  min-width: 7rem;
+  font-weight: 600;
+  color: var(--pico-h1-color);
+}
+
+.row-value {
+  font-size: 0.95rem;
+  color: var(--pico-muted-color);
+  overflow-wrap: anywhere;
+}
+
+.rows details form {
+  padding-bottom: 1.1rem;
+}
+
+.rows details form button {
+  width: auto;
+  margin-bottom: 0;
+  padding-inline: 1.5rem;
 }
 
 @media (max-height: 760px) {

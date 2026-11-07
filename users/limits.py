@@ -62,6 +62,29 @@ class VerificationEmailLimits(BaseModel):
         return self
 
 
+# Per user id: the session is known, the password is guessed; logout replaces a cooldown.
+class CurrentPasswordLimits(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    user_max_events: PositiveInt
+    user_window_seconds: PositiveInt
+
+
+# Per user id: only a logged-in password holder asks; links sent, not guesses, are counted.
+class EmailChangeLimits(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    user_max_events: PositiveInt
+    user_window_seconds: PositiveInt
+    user_cooldown_seconds: PositiveInt
+
+    @model_validator(mode="after")
+    def _validate_cooldown_within_window(self) -> Self:
+        if self.user_cooldown_seconds >= self.user_window_seconds:
+            raise ValueError("user_cooldown_seconds must be shorter than user_window_seconds")
+        return self
+
+
 class ThrottleLimits(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -69,3 +92,5 @@ class ThrottleLimits(BaseModel):
     password_reset: PasswordResetLimits
     signup: SignupLimits
     verification_email: VerificationEmailLimits
+    current_password: CurrentPasswordLimits
+    email_change: EmailChangeLimits

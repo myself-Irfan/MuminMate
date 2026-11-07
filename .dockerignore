@@ -18,6 +18,7 @@ design/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.playwright-mcp/
 .gitignore
 .dockerignore
 .pre-commit-config.yaml

@@ -128,6 +128,29 @@ def test_password_reset_clears_own_login_failures(
     assert not ThrottleEvent.objects.filter(scope=ThrottleScope.LOGIN_FAILURE).exists()
 
 
+# Forgot the password, guessed in Settings until logged out, then reset it by email.
+@pytest.mark.usefixtures("request_limits", "email_change_link_delay")
+def test_password_reset_lifts_settings_wrong_password_limit(
+    client: Client, consumer_user: User, password: str, set_password_path: str
+) -> None:
+    ThrottleEvent.objects.bulk_create(
+        ThrottleEvent(scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user)
+        for _ in range(3)
+    )
+    new_password = password + "-new"
+    client.post(set_password_path, {"new_password1": new_password, "new_password2": new_password})
+    # The session hash comes from the password: log in with the reset one, not the stale object.
+    consumer_user.refresh_from_db()
+    client.force_login(consumer_user)
+
+    response = client.post(
+        "/accounts/settings/",
+        {"row": "email", "email": "new@example.com", "current_password": new_password},
+    )
+
+    assert response["Location"] == "/accounts/settings/"
+
+
 def test_password_reset_link_works_once(
     client: Client, password: str, reset_link: str, set_password_path: str
 ) -> None:

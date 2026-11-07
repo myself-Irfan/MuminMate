@@ -9,3 +9,11 @@ class InvalidVerificationLinkError(ProblemError):
 
 class EmailTakenError(ProblemError):
     status = HTTPStatus.CONFLICT
+
+
+class InvalidEmailChangeLinkError(ProblemError):
+    status = HTTPStatus.BAD_REQUEST
+
+
+class EmailChangeLinkForOtherAccountError(ProblemError):
+    status = HTTPStatus.FORBIDDEN

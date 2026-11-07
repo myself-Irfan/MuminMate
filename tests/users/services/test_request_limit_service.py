@@ -6,10 +6,11 @@ from unittest.mock import Mock
 import pytest
 from django.core.exceptions import SuspiciousOperation
 from django.utils import timezone
+from pytest_django import DjangoAssertNumQueries
 
 from tests.logging_support import events
 from users.enums import ThrottleScope
-from users.models import ThrottleEvent
+from users.models import ThrottleEvent, User
 from users.services.request_limit_service import RequestLimitService
 from users.throttling import digest_email, mask_ip
 
@@ -22,11 +23,18 @@ def add_requests(
     scope: ThrottleScope,
     email: str = "irfan@example.com",
     ip: str | None = "203.0.113.7",
+    user: User | None = None,
     seconds_ago: int = 120,
 ) -> None:
     created_at = timezone.now() - timedelta(seconds=seconds_ago)
     ThrottleEvent.objects.bulk_create(
-        ThrottleEvent(scope=scope, email_digest=digest_email(email), ip=ip, created_at=created_at)
+        ThrottleEvent(
+            scope=scope,
+            email_digest=digest_email(email),
+            ip=ip,
+            user=user,
+            created_at=created_at,
+        )
         for _ in range(count)
     )
 
@@ -276,6 +284,162 @@ def test_verification_email_refusal_logs_scope(json_logs: io.StringIO) -> None:
     assert line["scope"] == ThrottleScope.VERIFICATION_EMAIL
 
 
+def test_current_password_recorded_for_user_only(consumer_user: User) -> None:
+    attempt = RequestLimitService().record_current_password(consumer_user)
+
+    event = ThrottleEvent.objects.get()
+    assert attempt == event
+    assert (event.scope, event.user, event.email_digest, event.ip) == (
+        ThrottleScope.CURRENT_PASSWORD_FAILURE,
+        consumer_user,
+        "",
+        None,
+    )
+
+
+@pytest.mark.parametrize(("count", "allowed"), [(2, True), (3, False)])
+def test_current_password_refused_when_user_cap_reached(
+    consumer_user: User, count: int, allowed: bool
+) -> None:
+    add_requests(count, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user)
+
+    attempt = RequestLimitService().record_current_password(consumer_user)
+
+    assert (attempt is not None) is allowed
+
+
+def test_current_password_allowed_when_attempts_outside_window(consumer_user: User) -> None:
+    add_requests(
+        3, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user, seconds_ago=601
+    )
+
+    assert RequestLimitService().record_current_password(consumer_user) is not None
+
+
+def test_current_password_allowed_for_other_user(
+    consumer_user: User, unverified_consumer_user: User
+) -> None:
+    add_requests(3, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=unverified_consumer_user)
+
+    assert RequestLimitService().record_current_password(consumer_user) is not None
+
+
+@pytest.mark.parametrize("scope", [ThrottleScope.LOGIN_FAILURE, ThrottleScope.PASSWORD_RESET])
+def test_current_password_ignores_other_scopes(consumer_user: User, scope: ThrottleScope) -> None:
+    add_requests(3, scope=scope, user=consumer_user)
+
+    assert RequestLimitService().record_current_password(consumer_user) is not None
+
+
+def test_current_password_refusal_not_kept(consumer_user: User) -> None:
+    add_requests(3, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user)
+
+    RequestLimitService().record_current_password(consumer_user)
+
+    assert ThrottleEvent.objects.count() == 3
+
+
+def test_current_password_refusal_logs_scope(json_logs: io.StringIO, consumer_user: User) -> None:
+    add_requests(3, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user)
+
+    RequestLimitService().record_current_password(consumer_user)
+
+    [line] = events(json_logs, "request_limited")
+    assert line["scope"] == ThrottleScope.CURRENT_PASSWORD_FAILURE
+
+
+# A completed password reset proves the inbox, so the owner gets the Settings rows back.
+def test_clear_current_password_failures_deletes_only_that_users_failures(
+    consumer_user: User, staff_user: User
+) -> None:
+    add_requests(2, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user)
+    add_requests(1, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=staff_user)
+    add_requests(1, scope=ThrottleScope.EMAIL_CHANGE, user=consumer_user)
+
+    RequestLimitService().clear_current_password_failures(consumer_user)
+
+    assert set(ThrottleEvent.objects.values_list("scope", "user")) == {
+        (ThrottleScope.CURRENT_PASSWORD_FAILURE, staff_user.pk),
+        (ThrottleScope.EMAIL_CHANGE, consumer_user.pk),
+    }
+
+
+def test_email_change_recorded_for_user_only(consumer_user: User) -> None:
+    assert RequestLimitService().record_email_change(consumer_user)
+
+    event = ThrottleEvent.objects.get()
+    assert (event.scope, event.user, event.email_digest, event.ip) == (
+        ThrottleScope.EMAIL_CHANGE,
+        consumer_user,
+        "",
+        None,
+    )
+
+
+@pytest.mark.parametrize(("count", "allowed"), [(2, True), (3, False)])
+def test_email_change_refused_when_user_cap_reached(
+    consumer_user: User, count: int, allowed: bool
+) -> None:
+    add_requests(count, scope=ThrottleScope.EMAIL_CHANGE, user=consumer_user)
+
+    assert RequestLimitService().record_email_change(consumer_user) is allowed
+
+
+@pytest.mark.parametrize(("seconds_ago", "allowed"), [(59, False), (61, True)])
+def test_email_change_refused_within_cooldown(
+    consumer_user: User, seconds_ago: int, allowed: bool
+) -> None:
+    add_requests(1, scope=ThrottleScope.EMAIL_CHANGE, user=consumer_user, seconds_ago=seconds_ago)
+
+    assert RequestLimitService().record_email_change(consumer_user) is allowed
+
+
+def test_email_change_checks_cap_and_cooldown_in_one_query(
+    consumer_user: User, django_assert_num_queries: DjangoAssertNumQueries
+) -> None:
+    with django_assert_num_queries(2):
+        RequestLimitService().record_email_change(consumer_user)
+
+
+def test_email_change_allowed_when_requests_outside_window(consumer_user: User) -> None:
+    add_requests(3, scope=ThrottleScope.EMAIL_CHANGE, user=consumer_user, seconds_ago=3601)
+
+    assert RequestLimitService().record_email_change(consumer_user)
+
+
+def test_email_change_allowed_for_other_user(
+    consumer_user: User, unverified_consumer_user: User
+) -> None:
+    add_requests(3, scope=ThrottleScope.EMAIL_CHANGE, user=unverified_consumer_user)
+
+    assert RequestLimitService().record_email_change(consumer_user)
+
+
+def test_email_change_ignores_current_password_failures(consumer_user: User) -> None:
+    add_requests(
+        3, scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user, seconds_ago=30
+    )
+
+    assert RequestLimitService().record_email_change(consumer_user)
+
+
+def test_email_change_refusal_not_kept(consumer_user: User) -> None:
+    add_requests(3, scope=ThrottleScope.EMAIL_CHANGE, user=consumer_user)
+
+    RequestLimitService().record_email_change(consumer_user)
+
+    assert ThrottleEvent.objects.count() == 3
+
+
+def test_email_change_refusal_logs_scope(json_logs: io.StringIO, consumer_user: User) -> None:
+    add_requests(3, scope=ThrottleScope.EMAIL_CHANGE, user=consumer_user)
+
+    RequestLimitService().record_email_change(consumer_user)
+
+    [line] = events(json_logs, "request_limited")
+    assert line["scope"] == ThrottleScope.EMAIL_CHANGE
+
+
 def test_record_stores_scope_digest_and_masked_ip() -> None:
     event = RequestLimitService().record(
         ThrottleScope.PASSWORD_RESET, "IRFAN@example.com", "2001:db8:1:2::9"
@@ -299,6 +463,8 @@ def test_record_stores_null_ip_when_unknown() -> None:
         (ThrottleScope.PASSWORD_RESET, 3600),
         (ThrottleScope.SIGNUP, 600),
         (ThrottleScope.VERIFICATION_EMAIL, 3600),
+        (ThrottleScope.CURRENT_PASSWORD_FAILURE, 600),
+        (ThrottleScope.EMAIL_CHANGE, 3600),
     ],
 )
 def test_delete_expired_keeps_rows_within_scope_longest_window(

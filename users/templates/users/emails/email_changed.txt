@@ -1,0 +1,9 @@
+{% extends "emails/base.txt" %}
+
+{% block content %}The email for your MuminMate account was just changed to {{ new_email }}.
+
+If you did this, you don't need to do anything. From now on, we'll send account emails to the new address.
+
+If you didn't, reply to this email or write to {{ support_email }} and we'll help you get your account back.{% endblock %}
+
+{% block footer %}We sent this to tell you about a change to your account.{% endblock %}

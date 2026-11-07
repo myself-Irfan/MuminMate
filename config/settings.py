@@ -148,6 +148,15 @@ CELERY_TASK_ROUTES = {
         "routing_key": "email.password_reset",
     },
     "users.tasks.send_invite_email": {"queue": "email", "routing_key": "email.invite"},
+    "users.tasks.send_password_changed_email": {
+        "queue": "email",
+        "routing_key": "email.password_changed",
+    },
+    "users.tasks.send_email_changed_notice": {
+        "queue": "email",
+        "routing_key": "email.email_changed",
+    },
+    "users.tasks.send_email_change_link": {"queue": "email", "routing_key": "email.email_change"},
     "audit.tasks.record_incoming_event": {"queue": "audit", "routing_key": "audit.incoming"},
 }
 # A typo'd queue name fails at publish instead of creating a queue no worker reads.
@@ -185,6 +194,9 @@ PASSWORD_RESET_TIMEOUT = int(timedelta(hours=env.django_email_link_timeout_hours
 PASSWORD_RESET_LINK_TIMEOUT = int(
     timedelta(minutes=env.django_password_reset_link_timeout_minutes).total_seconds()
 )
+EMAIL_CHANGE_LINK_TIMEOUT = int(
+    timedelta(minutes=env.django_email_change_link_timeout_minutes).total_seconds()
+)
 # HttpUrl renders a trailing "/"; links append reverse() paths.
 PUBLIC_URL = str(env.django_public_url).rstrip("/")
 
@@ -193,6 +205,7 @@ EMAIL_PORT = env.django_email.port
 EMAIL_USE_TLS = env.django_email.use_tls
 EMAIL_TIMEOUT = env.django_email.timeout_seconds
 DEFAULT_FROM_EMAIL = env.django_email.default_from_email
+SUPPORT_EMAIL = env.django_email.support_email
 EMAIL_HOST_USER = env.django_email_host_user
 EMAIL_HOST_PASSWORD = env.django_email_host_password.get_secret_value()
 

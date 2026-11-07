@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Annotated, Literal, Self
 from urllib.parse import quote
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -35,6 +37,17 @@ class EmailSettings(BaseModel):
     use_tls: bool
     timeout_seconds: PositiveInt
     default_from_email: Annotated[str, Field(min_length=1)]
+    support_email: Annotated[str, Field(min_length=1)]
+
+    # Django's form check: a typo would give every email-changed notice a broken Reply-To.
+    @field_validator("support_email")
+    @classmethod
+    def check_support_email_is_address(cls, value: str) -> str:
+        try:
+            validate_email(value)
+        except DjangoValidationError as error:
+            raise ValueError("must be an email address") from error
+        return value
 
 
 class Env(BaseSettings):
@@ -52,6 +65,7 @@ class Env(BaseSettings):
     django_session_absolute_hours: PositiveInt
     django_email_link_timeout_hours: PositiveInt
     django_password_reset_link_timeout_minutes: PositiveInt
+    django_email_change_link_timeout_minutes: PositiveInt
     django_audit_retention_days: PositiveInt
     django_logging: LogSettings
     django_throttle_limits: ThrottleLimits

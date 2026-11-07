@@ -9,6 +9,8 @@ from pydantic_settings import SettingsError
 
 from config.env import EmailSettings, Env, LogSettings
 from users.limits import (
+    CurrentPasswordLimits,
+    EmailChangeLimits,
     LoginLimits,
     PasswordResetLimits,
     SignupLimits,
@@ -44,6 +46,12 @@ def throttle_limits_data() -> dict[str, Any]:
             "email_window_seconds": 3600,
             "email_cooldown_seconds": 300,
         },
+        "current_password": {"user_max_events": 5, "user_window_seconds": 86400},
+        "email_change": {
+            "user_max_events": 3,
+            "user_window_seconds": 86400,
+            "user_cooldown_seconds": 1200,
+        },
     }
 
 
@@ -60,6 +68,7 @@ def email_data() -> dict[str, Any]:
         "use_tls": False,
         "timeout_seconds": 10,
         "default_from_email": "MuminMate <no-reply@example.com>",
+        "support_email": "support@example.com",
     }
 
 
@@ -96,6 +105,7 @@ def env_vars(
         "DJANGO_SESSION_ABSOLUTE_HOURS": "12",
         "DJANGO_EMAIL_LINK_TIMEOUT_HOURS": "72",
         "DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES": "60",
+        "DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES": "1440",
         "DJANGO_AUDIT_RETENTION_DAYS": "90",
         "DJANGO_LOGGING": json.dumps(logging_data),
         "DJANGO_THROTTLE_LIMITS": json.dumps(throttle_limits_data),
@@ -165,6 +175,7 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         ("DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES", "0"),
         # Email links last 72 hours in env_vars: 4320 minutes.
         ("DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES", "4320"),
+        ("DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES", "0"),
         # Idle is 180 minutes in env_vars, so 2 hours is shorter.
         ("DJANGO_SESSION_ABSOLUTE_HOURS", "2"),
         ("FORWARDED_ALLOW_IPS", ""),
@@ -201,6 +212,7 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         "audit_retention_zero",
         "reset_link_timeout_zero",
         "reset_link_not_shorter_than_email_link",
+        "email_change_link_timeout_zero",
         "session_absolute_shorter_than_idle",
         "forwarded_allow_ips_empty",
         "forwarded_allow_ips_any",
@@ -263,6 +275,10 @@ def test_throttle_limits_parsed_from_json() -> None:
         verification_email=VerificationEmailLimits(
             email_max_events=3, email_window_seconds=3600, email_cooldown_seconds=300
         ),
+        current_password=CurrentPasswordLimits(user_max_events=5, user_window_seconds=86400),
+        email_change=EmailChangeLimits(
+            user_max_events=3, user_window_seconds=86400, user_cooldown_seconds=1200
+        ),
     )
 
 
@@ -286,6 +302,11 @@ def test_throttle_limits_parsed_from_json() -> None:
         ("verification_email", "email_max_events"),
         ("verification_email", "email_window_seconds"),
         ("verification_email", "email_cooldown_seconds"),
+        ("current_password", "user_max_events"),
+        ("current_password", "user_window_seconds"),
+        ("email_change", "user_max_events"),
+        ("email_change", "user_window_seconds"),
+        ("email_change", "user_cooldown_seconds"),
     ],
 )
 def test_env_fails_when_throttle_limit_not_positive(
@@ -310,6 +331,17 @@ def test_env_fails_when_cooldown_not_shorter_than_window(
     monkeypatch.setenv("DJANGO_THROTTLE_LIMITS", json.dumps(throttle_limits_data))
 
     with pytest.raises(ValidationError, match="email_cooldown_seconds must be shorter"):
+        Env(_env_file=None)
+
+
+@pytest.mark.parametrize("cooldown_seconds", [86400, 86401])
+def test_env_fails_when_email_change_cooldown_not_shorter_than_window(
+    monkeypatch: pytest.MonkeyPatch, throttle_limits_data: dict[str, Any], cooldown_seconds: int
+) -> None:
+    throttle_limits_data["email_change"]["user_cooldown_seconds"] = cooldown_seconds
+    monkeypatch.setenv("DJANGO_THROTTLE_LIMITS", json.dumps(throttle_limits_data))
+
+    with pytest.raises(ValidationError, match="user_cooldown_seconds must be shorter"):
         Env(_env_file=None)
 
 
@@ -442,6 +474,7 @@ def test_email_parsed_from_json() -> None:
         use_tls=False,
         timeout_seconds=10,
         default_from_email="MuminMate <no-reply@example.com>",
+        support_email="support@example.com",
     )
 
 
@@ -466,7 +499,7 @@ def test_env_fails_when_email_timeout_not_positive(
         Env(_env_file=None)
 
 
-@pytest.mark.parametrize("key", ["host", "default_from_email"])
+@pytest.mark.parametrize("key", ["host", "default_from_email", "support_email"])
 def test_env_fails_when_email_value_empty(
     monkeypatch: pytest.MonkeyPatch, email_data: dict[str, Any], key: str
 ) -> None:
@@ -474,6 +507,19 @@ def test_env_fails_when_email_value_empty(
     monkeypatch.setenv("DJANGO_EMAIL", json.dumps(email_data))
 
     with pytest.raises(ValidationError, match=re.escape(f"django_email.{key}")):
+        Env(_env_file=None)
+
+
+@pytest.mark.parametrize(
+    "address", ["support.example.com", "support@exmaple", "help me@example.com"]
+)
+def test_env_fails_when_support_email_not_an_address(
+    monkeypatch: pytest.MonkeyPatch, email_data: dict[str, Any], address: str
+) -> None:
+    email_data["support_email"] = address
+    monkeypatch.setenv("DJANGO_EMAIL", json.dumps(email_data))
+
+    with pytest.raises(ValidationError, match=re.escape("django_email.support_email")):
         Env(_env_file=None)
 
 

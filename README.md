@@ -45,9 +45,10 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_SESSION_ABSOLUTE_HOURS` | Log out this long after login, even if active (`12`); at least the idle value |
 | `DJANGO_EMAIL_LINK_TIMEOUT_HOURS` | Verification and invite links expire after this long (`72`); a change also applies to links already sent |
 | `DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES` | Password reset links expire after this long (`60`); shorter than the email link timeout, and a change also applies to links already sent |
+| `DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES` | Email change links expire after this long (`1440`); a change also applies to links already sent |
 | `DJANGO_AUDIT_RETENTION_DAYS` | `deleteexpiredauditevents` deletes request audit rows older than this (`90`) |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
-| `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup and verification email limits as one-line JSON (see Throttling below) |
+| `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup, verification email, current password and email change limits as one-line JSON (see Throttling below) |
 | `DJANGO_EMAIL` | Mail server as one-line JSON (see Email below) |
 | `DJANGO_EMAIL_HOST_USER` | Mail server login; empty when it needs none (Mailpit), else set with the password |
 | `DJANGO_EMAIL_HOST_PASSWORD` | Mail server password; empty or set together with the user |
@@ -95,7 +96,11 @@ Every variable is required; the app refuses to start if one is missing.
 | `/accounts/logout/` | Log out (POST only) |
 | `/accounts/signup/` | Create a consumer account (public); always ends on `/accounts/signup/done/` |
 | `/accounts/password-reset/` | Email a link to choose a new password (public); always ends on `/accounts/password-reset/done/` |
+| `/accounts/welcome/` | After the first login: fill in the profile, or skip it |
+| `/accounts/profile/` | View and edit the profile, one row at a time |
+| `/accounts/settings/` | Change the email or password |
 | `/accounts/invite/<uid>/<token>/` | Set your password from an invite email (public) |
+| `/accounts/email/confirm/<token>/` | Confirm a new email from the link sent to it (logged in as that account) |
 | `/admin/` | Django admin (email login): staff manage consumer accounts; only superusers manage staff accounts and their privileges |
 
 Every error an API endpoint raises is RFC 9457 Problem+JSON (`application/problem+json`: `type`,
@@ -118,8 +123,9 @@ Staff and superusers use separate accounts: every consumer page, public ones inc
 Every response carries a strict Content-Security-Policy ([django-csp](https://django-csp.readthedocs.io),
 set in `CONTENT_SECURITY_POLICY`): scripts, styles, fonts and requests from this site only, `data:`
 images (Pico's icons), no plugins, no `<base>`, forms post only here, no framing. It holds because
-nothing is inline and nothing comes from a CDN; keep it that way. Token pages (confirm, reset, invite)
-send `Referrer-Policy: same-origin`, Django's default, so the token never leaves the site.
+nothing is inline and nothing comes from a CDN; keep it that way. Token pages (confirm, reset,
+invite, email change) send `Referrer-Policy: same-origin`, Django's default, so the token never
+leaves the site.
 
 ## Passwords
 
@@ -147,8 +153,10 @@ consumers only, as with editing.
 
 Changing a consumer's email in the admin makes it unconfirmed again: the new address gets a
 confirmation link. An invitee who never set a password, staff included, gets the invite again
-instead. Staff with a password get nothing: `/admin/` doesn't check confirmation. Links sent to the
-old address stop working either way. A change of letter case only is no change.
+instead. Staff with a password get no link: `/admin/` doesn't check confirmation. Every account
+with a password, staff included, also gets the email-changed notice at the old address (see Email
+change); a pending invitee doesn't, since the old address was likely a typo. Links sent to the old
+address stop working either way. A change of letter case only is no change.
 
 ## Signup
 
@@ -174,6 +182,15 @@ constraint): lookalike letters such as `ı` would otherwise make `ırfan@` a dif
 `irfan@`. This matches the HTML standard's valid email address; for an international domain, browsers
 send (and users can type) its `xn--` form.
 
+## Profile
+
+The first login goes to `/accounts/welcome/` (unless the login link carried its own `?next=`). It asks
+"What should we call you?" and the date of birth (both required; the date from 1900, not in the
+future), plus gender and "What do you mostly do these days?" (both optional). "Skip" goes home and
+saves nothing. Once a profile exists, Welcome sends you to Profile instead. `/accounts/profile/`
+edits one field per row; without a saved profile it shows the whole form once. The header links to
+it, showing the display name, or the email until there's a profile.
+
 ## Password reset
 
 "Forgot your password?" on the login page opens `/accounts/password-reset/`. Every email gets the same
@@ -186,11 +203,37 @@ session), then asks for the new password. It stops working once used, after
 `DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES` (shorter than other links: it can take over the
 account), when the password changes or the user logs in, or when the account is deactivated or
 made staff. Setting a new password logs out the account's other sessions, confirms the email if it
-wasn't yet (the link proved the inbox), and clears that email's failed logins from that IP. It
-doesn't log the user in.
+wasn't yet (the link proved the inbox), clears that email's failed logins from that IP and the
+account's wrong current passwords in Settings (see Throttling). It doesn't log the user in.
 
 Requests are limited per email and per IP (see Throttling), whether or not the email has an account,
 so the limit reveals nothing either.
+
+## Password change
+
+Settings → Password asks for the current password and a new one (the rules in Passwords). Saving
+keeps this session, logs out the account's other sessions, and the worker mails a "your password was
+changed" notice with a link to password reset, in case it wasn't the owner. A wrong current password
+counts toward a limit (see Throttling).
+
+## Email change
+
+Settings → Email asks for the new address and the current password, then the worker mails a link to
+the new address only; the account keeps its email until the link is used. A taken address or the
+same one is refused on the form, and a wrong current password counts toward the same limit as the
+password row (see Throttling).
+
+The link opens a confirm page ("Change your email from … to …?"), and only its button changes the
+email, so mail scanners that open links change nothing. It must be opened logged in as the same
+account (logged out, it goes through login first; another account gets "This link is for a different
+account."). It expires after `DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES` and stops working when the
+password, email or confirmation changes after it's sent. The new address is in the signed link
+itself, so nothing is stored while it's pending. If another account took the address in the
+meantime, the page says so and nothing changes.
+
+The new email counts as confirmed (the link proved the inbox). The old address then gets a notice
+naming the new one, with `support_email` as its Reply-To: someone who took over the account can
+change the email, so the owner's way back is a person.
 
 ## Sessions
 
@@ -205,7 +248,8 @@ headers), so after logout the back button can't show a page from the session.
 ## Throttling
 
 `DJANGO_THROTTLE_LIMITS` holds every limit, one key per scope: `login` (failed logins),
-`password_reset`, `signup` and `verification_email` (confirmation links). It's JSON on one line, two
+`password_reset`, `signup`, `verification_email` (confirmation links), `current_password` (wrong
+current passwords in Settings) and `email_change` (email change links). It's JSON on one line, two
 levels deep: each scope holds flat numbers named `<rule>_max_events` within `<rule>_window_seconds`
 (sliding windows, in seconds). Every value must be a positive integer, a cooldown or backoff shorter
 than its window, and unknown or missing keys stop the app at startup.
@@ -271,10 +315,39 @@ refused request isn't counted, so it doesn't extend its own block. Each request 
 then counted with itself included (a refused one is deleted again), so a burst of parallel requests
 can't all slip under the limit.
 
+### Current password
+
+```json
+{"current_password": {"user_max_events": 5, "user_window_seconds": 86400}}
+```
+
+Here an event is a wrong current password on the Settings page, counted per account (user id), so
+changing the email doesn't reset it. The Password and Email rows share the count. A weak new
+password or a mismatch isn't counted, and a correct current password leaves nothing behind. Five
+wrong tries in 24 hours are allowed. The next try logs that session out without checking the
+password ("Too many wrong passwords. Log in again; to change your email or password today, reset
+your password first."), so someone holding a session but not the password has to face the login
+limits instead. Until the window passes, every further try logs out again, even with the right
+password. A completed password reset clears the count, since the emailed link proves the owner.
+Like a login, each try is stored before the check and counted with itself.
+
+### Email change
+
+```json
+{"email_change": {"user_max_events": 3, "user_window_seconds": 86400, "user_cooldown_seconds": 1200}}
+```
+
+Here an event is an email change link sent, counted per account: at most 3 a day, 20 minutes apart.
+Only a logged-in user who typed the right current password gets this far, so there's no IP rule. Over
+the limit, Settings says "Too many email change requests. Try again later." with status `429`, and
+nothing is sent.
+
 ### Storage
 
 Every event is a row in `throttle_events`: its scope, a keyed hash of the email (never the email
-itself; empty for `signup`), the IP (empty for `verification_email`) and the time. The hash is
+itself; empty for `signup`, `current_password` and `email_change`), the IP (empty for
+`verification_email`, `current_password` and `email_change`), the account (only for
+`current_password` and `email_change`) and the time. The hash is
 keyed with `DJANGO_SECRET_KEY`, so rotating the key resets every count. IPs are personal data, so `python manage.py deleteexpiredthrottleevents` deletes each
 scope's rows once they're older than its longest window; in production run it as a scheduled job (a
 Kubernetes CronJob, every 15 minutes).
@@ -310,11 +383,11 @@ Each request logs `request_started` and `request_finished` (`request_failed` on 
   trusted.
 - **Masking:** values of keys that name a secret (`password`, `token`, `api_key`, `cookie`,
   `authorization`, …, in any spelling) and of such query-string parameters are logged as `***`.
-  Tokens inside URL paths (email verification, password reset) are logged as `*****`, and those pages
-  send `Referrer-Policy: same-origin` (the token goes to no other site). Our events carry ids, never
-  emails or message text. An exception's message is logged as written and can include data from the
-  database (a duplicate-key error names the email), so treat logs as personal data and restrict who
-  can read them.
+  Tokens inside URL paths (email verification, password reset, email change) are logged as `*****`,
+  and those pages send `Referrer-Policy: same-origin` (the token goes to no other site). Our events
+  carry ids, never emails or message text. An exception's message is logged as written and can
+  include data from the database (a duplicate-key error names the email), so treat logs as personal
+  data and restrict who can read them.
 
 Auth events (each logged once, from wherever the decision is made; every line also has `request_id`,
 and `ip` unless the worker logged it):
@@ -340,9 +413,15 @@ and `ip` unless the worker logged it):
 | `invite_resend_requested` | info | `user_id` |
 | `invite_accepted` | info | `user_id` |
 | `invite_email_skipped` | info | `user_id` (worker: the account is inactive, deleted or already has a password) |
-| `request_limited` | warning | `scope` (`password_reset`, `signup`, `verification_email`); a request refused by its limit (no `user_id`: no account lookup) |
+| `password_changed` | info | `user_id` (Settings; the account's other sessions are logged out) |
+| `password_changed_email_skipped` | info | `user_id` (worker: the account was deactivated or deleted) |
+| `email_change_requested` | info | `user_id` (a link to the new address is queued) |
+| `email_change_link_skipped` | info | `user_id` (worker: the account was deactivated or deleted) |
+| `email_changed` | info | `user_id` (the link was confirmed) |
+| `email_changed_notice_skipped` | info | `user_id` (worker: the account was deactivated or deleted) |
+| `request_limited` | warning | `scope` (`password_reset`, `signup`, `verification_email`, `current_password_failure`, `email_change`); a request refused by its limit (no `user_id`, as most scopes look up no account) |
 | `email_rejected` | error | `user_id`, `error_type`, `smtp_code` (worker: the mail server refused for good, 5xx or no STARTTLS; not retried; no traceback, the server's reply echoes the address) |
-| `verification_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed` | error | `user_id`; the broker couldn't be reached or was blocking publishes, so no mail was queued (traceback attached) |
+| `verification_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed`, `password_changed_email_queue_failed`, `email_change_link_queue_failed`, `email_changed_notice_queue_failed` | error | `user_id`; the broker couldn't be reached or was blocking publishes, so no mail was queued (traceback attached) |
 | `audit_event_queue_failed` | error | `event_type` (`REQUEST`, `RESPONSE`); the same, for a request audit row (see Request audit) |
 
 `email_digest` is the same keyed hash the `throttle_events` table stores, so many failures on one
@@ -408,13 +487,15 @@ there ([celery#10683](https://github.com/celery/celery/issues/10683), fixed in C
   feeds, so a slow log database never holds up the mail worker. The broker is shared, though: until
   the deployment caps `audit` with a RabbitMQ policy, a huge audit backlog could raise a broker alarm
   that blocks mail too. Each audit write is limited to 30 seconds.
-- Mail is sent by tasks (`send_verification_email`, `send_password_reset_email`, `send_invite_email`): each retries temporary SMTP errors with growing,
-  randomised waits (up to 5 times, about 12 minutes on average): dropped connections, timeouts and
-  the server's "try later" answers (4xx). A permanent refusal (5xx: a refused address, a rejected
-  message, a wrong login) or a server without STARTTLS isn't retried: it's logged once as
-  `email_rejected`. Each attempt is limited to 60 seconds.
+- Mail is sent by tasks (`send_verification_email`, `send_password_reset_email`, `send_invite_email`,
+  `send_password_changed_email`, `send_email_change_link`, `send_email_changed_notice`): each retries
+  temporary SMTP errors with growing, randomised waits (up to 5 times, about 12 minutes on average):
+  dropped connections, timeouts and the server's "try later" answers (4xx). A permanent refusal (5xx:
+  a refused address, a rejected message, a wrong login) or a server without STARTTLS isn't retried:
+  it's logged once as `email_rejected`. Each attempt is limited to 60 seconds.
 - Tasks take ids, never personal data, and are queued only after the transaction commits (except
-  the audit task: it carries the masked row at once, see Request audit). A task
+  the audit task: it carries the masked row at once, see Request audit). The email change mails
+  also carry an address (the new one, or the old one for the notice): nothing stored holds it. A task
   runs again if its worker or worker process is killed (out of memory, say) or loses the broker
   mid-task, so every task must be safe to run twice; RabbitMQ drops one after 20 deliveries. The
   audit task is the exception: it's acknowledged on arrival, so it never runs twice and a crash loses
@@ -454,15 +535,18 @@ Processes, all from the one image:
   "port": 1025,
   "use_tls": false,
   "timeout_seconds": 10,
-  "default_from_email": "MuminMate <no-reply@localhost>"
+  "default_from_email": "MuminMate <no-reply@localhost>",
+  "support_email": "support@example.com"
 }
 ```
 
 `use_tls` starts TLS on a plain connection (STARTTLS, usually port 587); `timeout_seconds` bounds a hung
 server; `default_from_email` is what recipients see as the sender, and its domain must be authorized by
-the provider (SPF/DKIM) or mail lands in spam. Unknown or missing keys stop the app at startup. The
-login (`DJANGO_EMAIL_HOST_USER`, `DJANGO_EMAIL_HOST_PASSWORD`) is separate because the password is a
-secret; both are empty or both set.
+the provider (SPF/DKIM) or mail lands in spam; `support_email` is the human contact named in the
+email-changed notice and set as its Reply-To. Unknown or missing keys, or a `support_email` that
+isn't an email address, stop the app at startup. The login (`DJANGO_EMAIL_HOST_USER`,
+`DJANGO_EMAIL_HOST_PASSWORD`) is separate because the password is a secret; both are empty or both
+set.
 
 Locally, [Mailpit](https://mailpit.axllent.org) catches every mail and delivers nothing: `make up`
 starts it; read the inbox at http://127.0.0.1:8025. The worker sends the mail, so inside compose it
@@ -495,7 +579,7 @@ every Monday, so a new advisory fails `audit` or the image scan even in a week n
 | `lint` | pre-commit (ruff, zizmor on the workflows, whitespace) and mypy |
 | `audit` | pip-audit on the locked dependencies |
 | `test` | migration check, tests with coverage (at least 95%); coverage table in the run summary, HTML coverage as an artifact |
-| `image` | builds the Docker image (layers cached between runs), runs `check --deploy` in it with production settings, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, no `Server` header, each worker answering a ping) |
+| `image` | builds the Docker image (layers cached between runs, except the final stage, so its `apt-get upgrade` always picks up today's Debian fixes), runs `check --deploy` in it with production settings, scans it with Trivy (fails on fixable HIGH/CRITICAL), smoke-tests it (readiness, the login page and its static files, no `Server` header, each worker answering a ping) |
 | `load_test` | runs `load-tests/login.js` against that image; p95 table in the run summary, k6's HTML report as an artifact |
 | `checks` | passes only if every job above passed; the one required check |
 
@@ -519,7 +603,8 @@ config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
 audit/     request audit: middleware, row building, the audit task and its own database
 users/     custom user model (email login, no username), manager, admin, signup, email verification,
-           invites, password reset, login/logout, session timeouts, throttling, auth event logging
+           invites, password reset, login/logout, profile, settings (email and password change),
+           session timeouts, throttling, auth event logging
 templates/ shared layout (base.html), partials, email layouts and the home page
 static/    CSS, fonts, logos (self-hosted, with licences)
 tests/     mirrors the source tree

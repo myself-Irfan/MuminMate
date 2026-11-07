@@ -1,0 +1,9 @@
+{% extends "registration/base_card.html" %}
+
+{% block title %}Invalid link{% endblock %}
+
+{% block card %}
+  <h1>This link can't be used</h1>
+  <p>{{ message }}</p>
+  <p><a href="{% url 'account_settings' %}">Back to Settings</a></p>
+{% endblock %}

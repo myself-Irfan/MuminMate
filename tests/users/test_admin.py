@@ -155,6 +155,7 @@ def test_change_normalizes_email(admin_client: Client, consumer_user: User) -> N
 def test_change_of_email_resets_verification_and_queues_link(
     django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
     verification_email_delay: Mock,
+    email_changed_notice_delay: Mock,
     admin_client: Client,
     consumer_user: User,
 ) -> None:
@@ -167,12 +168,14 @@ def test_change_of_email_resets_verification_and_queues_link(
     consumer_user.refresh_from_db()
     assert not consumer_user.is_email_verified
     verification_email_delay.assert_called_once_with(consumer_user.pk)
+    email_changed_notice_delay.assert_called_once_with(consumer_user.pk, "irfan@example.com")
 
 
-def test_change_of_staff_email_keeps_verification_and_sends_nothing(
+def test_change_of_staff_email_keeps_verification_and_sends_only_notice(
     django_capture_on_commit_callbacks: DjangoCaptureOnCommitCallbacks,
     verification_email_delay: Mock,
     invite_email_delay: Mock,
+    email_changed_notice_delay: Mock,
     admin_client: Client,
     staff_user: User,
 ) -> None:
@@ -189,6 +192,7 @@ def test_change_of_staff_email_keeps_verification_and_sends_nothing(
     assert staff_user.is_email_verified
     verification_email_delay.assert_not_called()
     invite_email_delay.assert_not_called()
+    email_changed_notice_delay.assert_called_once_with(staff_user.pk, "staff@example.com")
 
 
 @pytest.mark.usefixtures("verification_email_delay", "invite_email_delay")

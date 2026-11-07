@@ -7,6 +7,8 @@ from django.utils.http import urlsafe_base64_encode
 from pytest_django import Settings
 
 from users.limits import (
+    CurrentPasswordLimits,
+    EmailChangeLimits,
     LoginLimits,
     PasswordResetLimits,
     SignupLimits,
@@ -47,8 +49,39 @@ def verification_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
 
 
 @pytest.fixture
+def password_changed_email_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr(
+        "users.services.password_change_service.send_password_changed_email.delay", delay
+    )
+    return delay
+
+
+@pytest.fixture
+def email_changed_notice_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr(
+        "users.services.email_change_service.send_email_changed_notice.delay", delay
+    )
+    return delay
+
+
+@pytest.fixture
+def email_change_link_delay(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr("users.services.email_change_service.send_email_change_link.delay", delay)
+    return delay
+
+
+@pytest.fixture
 def staff_client(client: Client, staff_user: User) -> Client:
     client.force_login(staff_user)
+    return client
+
+
+@pytest.fixture
+def consumer_client(client: Client, consumer_user: User) -> Client:
+    client.force_login(consumer_user)
     return client
 
 
@@ -83,6 +116,10 @@ def request_limits(settings: Settings) -> None:
             "signup": SignupLimits(ip_max_events=2, ip_window_seconds=600),
             "verification_email": VerificationEmailLimits(
                 email_max_events=3, email_window_seconds=3600, email_cooldown_seconds=60
+            ),
+            "current_password": CurrentPasswordLimits(user_max_events=3, user_window_seconds=600),
+            "email_change": EmailChangeLimits(
+                user_max_events=3, user_window_seconds=3600, user_cooldown_seconds=60
             ),
         }
     )

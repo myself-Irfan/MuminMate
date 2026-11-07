@@ -1,0 +1,9 @@
+{% extends "emails/base.txt" %}
+
+{% block content %}Someone asked to use this address for a MuminMate account. Confirm it here:
+
+{{ confirm_url }}
+
+This link expires in {{ expiry }}.{% endblock %}
+
+{% block footer %}If that wasn't you, ignore this email; the account stays as it is.{% endblock %}

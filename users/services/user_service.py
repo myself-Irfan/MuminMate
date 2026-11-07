@@ -1,5 +1,6 @@
 import structlog
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from psycopg.errors import UniqueViolation
 
 from users.exceptions import EmailTakenError
@@ -24,6 +25,25 @@ class UserService:
             )
         except User.DoesNotExist:
             return None
+
+    # Conditional on the loaded email, like mark_verified: of two quick confirms, one writes.
+    def change_email(self, user: User, email: str) -> bool:
+        email = User.objects.normalize_email(email)
+        verified_at = timezone.now()
+        try:
+            with transaction.atomic():
+                changed = User.objects.filter(pk=user.pk, email=user.email).update(
+                    email=email, email_verified_at=verified_at
+                )
+        except IntegrityError as error:
+            if not self._is_email_taken(error):
+                raise
+            raise EmailTakenError("That email is now used by another account.") from error
+        if not changed:
+            return False
+        user.email = email
+        user.email_verified_at = verified_at
+        return True
 
     def _create_signup_user(self, email: str, password: str) -> User:
         try:

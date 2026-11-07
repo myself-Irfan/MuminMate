@@ -1,0 +1,10 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+  <p style="margin:0;">Someone asked to use this address for a MuminMate account.</p>
+  {% include "emails/partials/button.html" with url=confirm_url label="Confirm this email" %}
+  <p style="margin:0 0 8px; font-size:14px; color:#686c64;">This link expires in {{ expiry }}.</p>
+  {% include "emails/partials/fallback_link.html" with url=confirm_url %}
+{% endblock %}
+
+{% block footer %}If that wasn't you, ignore this email; the account stays as it is.{% endblock %}
