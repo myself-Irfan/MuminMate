@@ -1,12 +1,17 @@
+from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.db.models.functions import Lower
 from django.utils import timezone
 
-from users.enums import ThrottleScope
+from users.enums import EmploymentStatus, Gender, ThrottleScope
 from users.managers import UserManager
-from users.validators import validate_email_is_ascii
+from users.validators import (
+    validate_birth_date_from_1900,
+    validate_birth_date_not_in_future,
+    validate_email_is_ascii,
+)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -74,6 +79,10 @@ class ThrottleEvent(models.Model):
     email_digest = models.CharField(max_length=64, blank=True)
     # Null when there is no client IP: no request, or a per-email-only scope.
     ip = models.GenericIPAddressField(null=True)
+    # Set for scopes counted per account: the id survives an email change; an email key doesn't.
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, related_name="+"
+    )
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -94,3 +103,36 @@ class ThrottleEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.get_scope_display()} at {self.created_at} from {self.ip}"
+
+
+class Profile(models.Model):
+    display_name = models.CharField(max_length=150)
+    birth_date = models.DateField(
+        validators=[validate_birth_date_not_in_future, validate_birth_date_from_1900]
+    )
+    gender = models.CharField(max_length=16, choices=Gender, blank=True)
+    employment_status = models.CharField(max_length=32, choices=EmploymentStatus, blank=True)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    class Meta:
+        db_table = "profiles"
+        constraints = (
+            models.CheckConstraint(
+                condition=models.Q(display_name__regex=r"\S"),
+                name="profiles_display_name_not_blank",
+                violation_error_message="Enter a name.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(gender__in=["", *Gender.values]),
+                name="profiles_gender_valid",
+                violation_error_message="Unknown gender.",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(employment_status__in=["", *EmploymentStatus.values]),
+                name="profiles_employment_status_valid",
+                violation_error_message="Unknown employment status.",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return self.display_name

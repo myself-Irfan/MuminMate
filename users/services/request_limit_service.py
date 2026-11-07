@@ -7,8 +7,14 @@ from django.db.models import Count, Max, Q
 from django.utils import timezone
 
 from users.enums import ThrottleScope
-from users.limits import PasswordResetLimits, SignupLimits, VerificationEmailLimits
-from users.models import ThrottleEvent
+from users.limits import (
+    CurrentPasswordLimits,
+    EmailChangeLimits,
+    PasswordResetLimits,
+    SignupLimits,
+    VerificationEmailLimits,
+)
+from users.models import ThrottleEvent, User
 from users.throttling import digest_email, mask_ip
 
 logger = structlog.get_logger(__name__)
@@ -38,12 +44,35 @@ class RequestLimitService:
             return self._refuse(event)
         return True
 
+    # Kept as a failure unless the caller deletes it after a correct password, like a login attempt.
+    def record_current_password(self, user: User) -> ThrottleEvent | None:
+        attempt = self.record(ThrottleScope.CURRENT_PASSWORD_FAILURE, None, None, user=user)
+        if self._is_user_limited(attempt, settings.THROTTLE_LIMITS.current_password):
+            self._refuse(attempt)
+            return None
+        return attempt
+
+    def clear_current_password_failures(self, user: User) -> None:
+        ThrottleEvent.objects.filter(
+            scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=user
+        ).delete()
+
+    def record_email_change(self, user: User) -> bool:
+        limits = settings.THROTTLE_LIMITS.email_change
+        event = self.record(ThrottleScope.EMAIL_CHANGE, None, None, user=user)
+        if self._is_user_limited_or_cooling_down(event, limits):
+            return self._refuse(event)
+        return True
+
     # Every throttle row is built here: email hashed, IP masked.
-    def record(self, scope: ThrottleScope, email: str | None, ip: str | None) -> ThrottleEvent:
+    def record(
+        self, scope: ThrottleScope, email: str | None, ip: str | None, user: User | None = None
+    ) -> ThrottleEvent:
         return ThrottleEvent.objects.create(
             scope=scope,
             email_digest=digest_email(email) if email is not None else "",
             ip=mask_ip(ip) if ip is not None else None,
+            user=user,
         )
 
     # Rows past their scope's longest window only hold personal data.
@@ -66,6 +95,14 @@ class RequestLimitService:
                 scope=ThrottleScope.VERIFICATION_EMAIL,
                 created_at__lt=now
                 - timedelta(seconds=limits.verification_email.email_window_seconds),
+            )
+            | Q(
+                scope=ThrottleScope.CURRENT_PASSWORD_FAILURE,
+                created_at__lt=now - timedelta(seconds=limits.current_password.user_window_seconds),
+            )
+            | Q(
+                scope=ThrottleScope.EMAIL_CHANGE,
+                created_at__lt=now - timedelta(seconds=limits.email_change.user_window_seconds),
             )
         )
         deleted, _ = ThrottleEvent.objects.filter(expired).delete()
@@ -103,3 +140,26 @@ class RequestLimitService:
             created_at__gte=event.created_at - timedelta(seconds=limits.ip_window_seconds),
         ).count()
         return recent > limits.ip_max_events
+
+    def _is_user_limited(self, event: ThrottleEvent, limits: CurrentPasswordLimits) -> bool:
+        recent = ThrottleEvent.objects.filter(
+            scope=event.scope,
+            user=event.user,
+            created_at__gte=event.created_at - timedelta(seconds=limits.user_window_seconds),
+        ).count()
+        return recent > limits.user_max_events
+
+    def _is_user_limited_or_cooling_down(
+        self, event: ThrottleEvent, limits: EmailChangeLimits
+    ) -> bool:
+        recent = ThrottleEvent.objects.filter(
+            scope=event.scope,
+            user=event.user,
+            created_at__gte=event.created_at - timedelta(seconds=limits.user_window_seconds),
+        ).aggregate(count=Count("id"), last_at=Max("created_at", filter=~Q(pk=event.pk)))
+        if recent["count"] > limits.user_max_events:
+            return True
+        last_at = recent["last_at"]
+        return last_at is not None and event.created_at - last_at < timedelta(
+            seconds=limits.user_cooldown_seconds
+        )

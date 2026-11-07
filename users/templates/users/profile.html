@@ -1,0 +1,22 @@
+{% extends "users/account_base.html" %}
+
+{% block title %}Profile{% endblock %}
+
+{% block pane %}
+  <h1>Profile</h1>
+  <p class="note">A few details help us answer in a way that fits you.</p>
+  {% if profile.pk %}
+    <div class="rows">
+      {% include "users/partials/account_row.html" with name="display_name" label="Name" value=profile.display_name form=forms.display_name %}
+      {% include "users/partials/account_row.html" with name="birth_date" label="Date of birth" value=profile.birth_date|date:"j F Y" form=forms.birth_date %}
+      {% include "users/partials/account_row.html" with name="gender" label="Gender" value=profile.get_gender_display|default:"Prefer not to say" form=forms.gender %}
+      {% include "users/partials/account_row.html" with name="employment_status" label="Employment" value=profile.get_employment_status_display|default:"Not added" form=forms.employment_status %}
+    </div>
+  {% else %}
+    <form method="post">
+      {% csrf_token %}
+      {{ full_form }}
+      <button type="submit">Save and continue</button>
+    </form>
+  {% endif %}
+{% endblock %}

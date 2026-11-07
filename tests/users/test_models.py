@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.contrib.auth.hashers import UNUSABLE_PASSWORD_PREFIX
@@ -7,7 +7,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from users.enums import ThrottleScope
-from users.models import ThrottleEvent, User
+from users.models import Profile, ThrottleEvent, User
 
 
 def test_str_returns_email() -> None:
@@ -180,3 +180,92 @@ def test_throttle_event_save_fails_when_scope_unknown() -> None:
 
     with pytest.raises(IntegrityError, match="throttle_events_scope_valid"):
         event.save()
+
+
+@pytest.mark.django_db
+def test_throttle_event_saves_without_user() -> None:
+    ThrottleEvent.objects.create(scope=ThrottleScope.SIGNUP, ip="203.0.113.7")
+
+    assert ThrottleEvent.objects.get().user is None
+
+
+def test_throttle_event_deleted_with_its_user(consumer_user: User) -> None:
+    ThrottleEvent.objects.create(scope=ThrottleScope.LOGIN_FAILURE, user=consumer_user)
+
+    consumer_user.delete()
+
+    assert not ThrottleEvent.objects.exists()
+
+
+def test_profile_str_returns_display_name() -> None:
+    profile = Profile(display_name="Irfan")
+
+    assert str(profile) == "Irfan"
+
+
+@pytest.mark.django_db
+def test_profile_saves_without_optional_fields(consumer_user: User) -> None:
+    Profile(user=consumer_user, display_name="Irfan", birth_date=date(1996, 4, 17)).save()
+
+    profile = Profile.objects.get(user=consumer_user)
+    assert (profile.gender, profile.employment_status) == ("", "")
+
+
+@pytest.mark.parametrize("display_name", ["", " \t"])
+@pytest.mark.django_db
+def test_profile_save_fails_when_display_name_blank(consumer_user: User, display_name: str) -> None:
+    profile = Profile(user=consumer_user, display_name=display_name, birth_date=date(1996, 4, 17))
+
+    with pytest.raises(IntegrityError, match="profiles_display_name_not_blank"):
+        profile.save()
+
+
+@pytest.mark.parametrize(
+    ("birth_date", "code"),
+    [
+        (timezone.localdate() + timedelta(days=1), "birth_date_in_future"),
+        (date(1899, 12, 31), "birth_date_too_early"),
+    ],
+)
+@pytest.mark.django_db
+def test_profile_full_clean_fails_when_birth_date_out_of_range(
+    consumer_user: User, birth_date: date, code: str
+) -> None:
+    profile = Profile(user=consumer_user, display_name="Irfan", birth_date=birth_date)
+
+    with pytest.raises(ValidationError) as error:
+        profile.full_clean()
+
+    assert [e.code for e in error.value.error_dict["birth_date"]] == [code]
+
+
+@pytest.mark.django_db
+def test_profile_save_fails_when_gender_unknown(consumer_user: User) -> None:
+    profile = Profile(
+        user=consumer_user, display_name="Irfan", birth_date=date(1996, 4, 17), gender="mal"
+    )
+
+    with pytest.raises(IntegrityError, match="profiles_gender_valid"):
+        profile.save()
+
+
+@pytest.mark.django_db
+def test_profile_save_fails_when_employment_status_unknown(consumer_user: User) -> None:
+    profile = Profile(
+        user=consumer_user,
+        display_name="Irfan",
+        birth_date=date(1996, 4, 17),
+        employment_status="employd",
+    )
+
+    with pytest.raises(IntegrityError, match="profiles_employment_status_valid"):
+        profile.save()
+
+
+@pytest.mark.django_db
+def test_profile_deleted_with_its_user(consumer_user: User) -> None:
+    Profile.objects.create(user=consumer_user, display_name="Irfan", birth_date=date(1996, 4, 17))
+
+    consumer_user.delete()
+
+    assert not Profile.objects.exists()

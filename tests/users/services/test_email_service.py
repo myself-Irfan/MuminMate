@@ -22,7 +22,11 @@ from pytest_django import Settings
 from tests.logging_support import events
 from users.models import User
 from users.services.email_service import EmailService
-from users.tokens import ConsumerPasswordResetTokenGenerator, InviteTokenGenerator
+from users.tokens import (
+    ConsumerPasswordResetTokenGenerator,
+    EmailChangeSigner,
+    InviteTokenGenerator,
+)
 
 
 @pytest.fixture
@@ -271,6 +275,135 @@ def test_invite_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
 
     assert mail.outbox == []
     [line] = events(json_logs, "invite_email_skipped")
+    assert line["user_id"] == 999_999
+
+
+def test_password_changed_email_links_to_reset_page(consumer_user: User, public_url: str) -> None:
+    EmailService().send_password_changed_email(consumer_user.pk)
+
+    [sent] = mail.outbox
+    assert sent.to == [consumer_user.email]
+    assert sent.subject == "Your MuminMate password was changed"
+    assert f"{public_url}/accounts/password-reset/" in str(sent.body)
+
+
+def test_password_changed_email_skipped_when_user_inactive(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    consumer_user.is_active = False
+    consumer_user.save()
+
+    EmailService().send_password_changed_email(consumer_user.pk)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "password_changed_email_skipped")
+    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
+
+
+@pytest.mark.django_db
+def test_password_changed_email_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_password_changed_email(999_999)
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "password_changed_email_skipped")
+    assert line["user_id"] == 999_999
+
+
+def test_email_changed_notice_sent_to_old_address_naming_new_one(consumer_user: User) -> None:
+    EmailService().send_email_changed_notice(consumer_user.pk, "old@example.com")
+
+    [sent] = mail.outbox
+    assert sent.to == ["old@example.com"]
+    assert sent.subject == "Your MuminMate email was changed"
+    assert f"changed to {consumer_user.email}" in str(sent.body)
+
+
+def test_email_changed_notice_offers_support_contact(
+    settings: Settings, consumer_user: User
+) -> None:
+    settings.SUPPORT_EMAIL = "help@example.com"
+
+    EmailService().send_email_changed_notice(consumer_user.pk, "old@example.com")
+
+    [sent] = mail.outbox
+    assert sent.reply_to == ["help@example.com"]
+    assert "write to help@example.com" in str(sent.body)
+
+
+def test_email_changed_notice_skipped_when_user_inactive(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    consumer_user.is_active = False
+    consumer_user.save()
+
+    EmailService().send_email_changed_notice(consumer_user.pk, "old@example.com")
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "email_changed_notice_skipped")
+    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
+
+
+@pytest.mark.django_db
+def test_email_changed_notice_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_email_changed_notice(999_999, "old@example.com")
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "email_changed_notice_skipped")
+    assert line["user_id"] == 999_999
+
+
+def test_email_change_link_sent_to_new_address(consumer_user: User, public_url: str) -> None:
+    EmailService().send_email_change_link(consumer_user.pk, "new@example.com")
+
+    [sent] = mail.outbox
+    assert isinstance(sent, EmailMultiAlternatives)
+    assert sent.to == ["new@example.com"]
+    assert sent.subject == "Confirm your new MuminMate email"
+    [link] = re.findall(rf"{re.escape(public_url)}/accounts/email/confirm/[\w:-]+/", str(sent.body))
+    [(html, _)] = sent.alternatives
+    assert isinstance(html, str)
+    assert link in html
+
+
+def test_email_change_link_token_names_user_and_new_email(consumer_user: User) -> None:
+    EmailService().send_email_change_link(consumer_user.pk, "new@example.com")
+    [token] = re.findall(r"/accounts/email/confirm/([\w:-]+)/", str(mail.outbox[0].body))
+
+    claim = EmailChangeSigner().read_token(token)
+
+    assert claim is not None
+    assert (claim.user_id, claim.new_email) == (consumer_user.pk, "new@example.com")
+    assert EmailChangeSigner().is_current(consumer_user, claim)
+
+
+def test_email_change_link_states_expiry(settings: Settings, consumer_user: User) -> None:
+    settings.EMAIL_CHANGE_LINK_TIMEOUT = 1800
+
+    EmailService().send_email_change_link(consumer_user.pk, "new@example.com")
+
+    [sent] = mail.outbox
+    assert "expires in 30\xa0minutes" in sent.body
+
+
+def test_email_change_link_skipped_when_user_inactive(
+    json_logs: io.StringIO, consumer_user: User
+) -> None:
+    consumer_user.is_active = False
+    consumer_user.save()
+
+    EmailService().send_email_change_link(consumer_user.pk, "new@example.com")
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "email_change_link_skipped")
+    assert (line["level"], line["user_id"]) == ("info", consumer_user.pk)
+
+
+@pytest.mark.django_db
+def test_email_change_link_skipped_when_user_deleted(json_logs: io.StringIO) -> None:
+    EmailService().send_email_change_link(999_999, "new@example.com")
+
+    assert mail.outbox == []
+    [line] = events(json_logs, "email_change_link_skipped")
     assert line["user_id"] == 999_999
 
 

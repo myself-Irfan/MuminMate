@@ -1,0 +1,8 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+  <p style="margin:0;">The email for your MuminMate account was just changed to {{ new_email }}. If you did this, you don't need to do anything. From now on, we'll send account emails to the new address.</p>
+  <p style="margin:16px 0 0;">If you didn't, reply to this email or write to {{ support_email }} and we'll help you get your account back.</p>
+{% endblock %}
+
+{% block footer %}We sent this to tell you about a change to your account.{% endblock %}

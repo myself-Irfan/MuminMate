@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 from django.contrib.auth import SESSION_KEY
 from django.test import Client
+from django.utils import timezone
 from pytest_django import DjangoCaptureOnCommitCallbacks
 from pytest_django.asserts import assertContains
 
@@ -11,8 +12,15 @@ from users.models import User
 
 
 @pytest.fixture
-def login_payload(consumer_user: User, password: str) -> dict[str, str]:
+def first_login_payload(consumer_user: User, password: str) -> dict[str, str]:
     return {"username": consumer_user.email, "password": password}
+
+
+@pytest.fixture
+def login_payload(consumer_user: User, first_login_payload: dict[str, str]) -> dict[str, str]:
+    consumer_user.last_login = timezone.now()
+    consumer_user.save(update_fields=["last_login"])
+    return first_login_payload
 
 
 @pytest.mark.django_db
@@ -145,6 +153,30 @@ def test_login_follows_next_on_same_host(client: Client, login_payload: dict[str
     response = client.post("/accounts/login/?next=/admin/", login_payload)
 
     assert response["Location"] == "/admin/"
+
+
+def test_first_login_redirects_to_welcome(
+    client: Client, first_login_payload: dict[str, str]
+) -> None:
+    response = client.post("/accounts/login/", first_login_payload)
+
+    assert response["Location"] == "/accounts/welcome/"
+
+
+def test_first_login_follows_next_on_same_host(
+    client: Client, first_login_payload: dict[str, str]
+) -> None:
+    response = client.post("/accounts/login/?next=/accounts/profile/", first_login_payload)
+
+    assert response["Location"] == "/accounts/profile/"
+
+
+def test_first_login_ignores_next_on_other_host(
+    client: Client, first_login_payload: dict[str, str]
+) -> None:
+    response = client.post("/accounts/login/?next=https://evil.example/", first_login_payload)
+
+    assert response["Location"] == "/accounts/welcome/"
 
 
 def test_login_page_redirects_when_already_logged_in(client: Client, consumer_user: User) -> None:

@@ -6,6 +6,7 @@ from kombu.exceptions import OperationalError
 from pytest_django import DjangoCaptureOnCommitCallbacks
 
 from tests.logging_support import events
+from users.enums import ThrottleScope
 from users.models import ThrottleEvent, User
 from users.services.login_failure_service import LoginFailureService
 from users.services.password_reset_service import PasswordResetService
@@ -82,6 +83,14 @@ def test_complete_reset_clears_own_failures_only(consumer_user: User) -> None:
     PasswordResetService().complete_reset(consumer_user, "198.51.100.1")
 
     assert list(ThrottleEvent.objects.values_list("ip", flat=True)) == ["203.0.113.7"]
+
+
+def test_complete_reset_clears_current_password_failures(consumer_user: User) -> None:
+    ThrottleEvent.objects.create(scope=ThrottleScope.CURRENT_PASSWORD_FAILURE, user=consumer_user)
+
+    PasswordResetService().complete_reset(consumer_user, None)
+
+    assert not ThrottleEvent.objects.exists()
 
 
 def test_complete_reset_logs_completed(json_logs: io.StringIO, consumer_user: User) -> None:

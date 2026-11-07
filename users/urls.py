@@ -1,6 +1,8 @@
 from django.urls import path
 
+from users.views.account_settings_views import AccountSettingsView
 from users.views.authentication_views import ConsumerLoginView, ConsumerLogoutView
+from users.views.email_change_views import EmailChangeConfirmView
 from users.views.email_verification_views import VerifyEmailView
 from users.views.invite_views import ConsumerInviteConfirmView
 from users.views.password_reset_views import (
@@ -9,6 +11,7 @@ from users.views.password_reset_views import (
     ConsumerPasswordResetDoneView,
     ConsumerPasswordResetView,
 )
+from users.views.profile_views import ProfileView, WelcomeView
 from users.views.signup_views import SignupDoneView, SignupView
 
 urlpatterns = [
@@ -16,10 +19,14 @@ urlpatterns = [
     path("logout/", ConsumerLogoutView.as_view(), name=ConsumerLogoutView.url_name),
     path("signup/", SignupView.as_view(), name=SignupView.url_name),
     path("signup/done/", SignupDoneView.as_view(), name=SignupDoneView.url_name),
+    path("welcome/", WelcomeView.as_view(), name=WelcomeView.url_name),
+    path("profile/", ProfileView.as_view(), name=ProfileView.url_name),
+    path("settings/", AccountSettingsView.as_view(), name=AccountSettingsView.url_name),
+    path("verify/<uidb64>/<token>/", VerifyEmailView.as_view(), name=VerifyEmailView.url_name),
     path(
-        "verify/<uidb64>/<token>/",
-        VerifyEmailView.as_view(),
-        name=VerifyEmailView.url_name,
+        "email/confirm/<token>/",
+        EmailChangeConfirmView.as_view(),
+        name=EmailChangeConfirmView.url_name,
     ),
     path(
         "password-reset/",

@@ -1,14 +1,17 @@
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.core import signing
 from django.utils import timezone
 from pytest_django import Settings
 
 from users.models import User
 from users.tokens import (
     ConsumerPasswordResetTokenGenerator,
+    EmailChangeSigner,
     EmailVerificationTokenGenerator,
     InviteTokenGenerator,
     LinkTokenGenerator,
@@ -205,3 +208,91 @@ def test_invite_token_invalid_when_account_deactivated(invited_user: User) -> No
     invited_user.refresh_from_db()
 
     assert not generator.check_token(invited_user, token)
+
+
+@pytest.fixture
+def signer() -> EmailChangeSigner:
+    return EmailChangeSigner()
+
+
+def test_email_change_token_reads_back_user_and_new_email(
+    signer: EmailChangeSigner, consumer_user: User
+) -> None:
+    token = signer.make_token(consumer_user, "a2@example.com")
+
+    claim = signer.read_token(token)
+
+    assert claim is not None
+    assert (claim.user_id, claim.new_email) == (consumer_user.pk, "a2@example.com")
+    assert signer.is_current(consumer_user, claim)
+
+
+def test_email_change_token_hides_password_hash(
+    signer: EmailChangeSigner, consumer_user: User
+) -> None:
+    token = signer.make_token(consumer_user, "a2@example.com")
+
+    assert consumer_user.password not in str(signing.loads(token, salt=signer.salt))
+
+
+def test_email_change_token_refused_when_edited(
+    signer: EmailChangeSigner, consumer_user: User
+) -> None:
+    token = signer.make_token(consumer_user, "a2@example.com")
+
+    assert signer.read_token(f"{token[:-1]}{'B' if token[-1] == 'A' else 'A'}") is None
+
+
+def test_email_change_token_refused_when_signed_with_other_salt(
+    signer: EmailChangeSigner, consumer_user: User
+) -> None:
+    token = signing.dumps(
+        {"user_id": consumer_user.pk, "new_email": "a2@example.com", "fingerprint": ""},
+        salt="other",
+    )
+
+    assert signer.read_token(token) is None
+
+
+@pytest.mark.parametrize(("age_seconds", "valid"), [(600, True), (601, False)])
+def test_email_change_token_expires_after_link_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    signer: EmailChangeSigner,
+    consumer_user: User,
+    age_seconds: int,
+    valid: bool,
+) -> None:
+    settings.EMAIL_CHANGE_LINK_TIMEOUT = 600
+    issued_at = 1_800_000_000
+    monkeypatch.setattr("django.core.signing.time.time", Mock(return_value=issued_at))
+    token = signer.make_token(consumer_user, "a2@example.com")
+    monkeypatch.setattr("django.core.signing.time.time", Mock(return_value=issued_at + age_seconds))
+
+    assert (signer.read_token(token) is not None) is valid
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda user: user.set_password("new-placeholder-passphrase"),
+        lambda user: setattr(user, "email", "a3@example.com"),
+        lambda user: setattr(user, "email_verified_at", None),
+    ],
+    ids=["password", "email", "email_verified_at"],
+)
+def test_email_change_token_not_current_when_account_changed(
+    signer: EmailChangeSigner, consumer_user: User, change: Callable[[User], None]
+) -> None:
+    claim = signer.read_token(signer.make_token(consumer_user, "a2@example.com"))
+    assert claim is not None
+
+    change(consumer_user)
+
+    assert not signer.is_current(consumer_user, claim)
+
+
+def test_email_change_signer_describes_own_timeout(settings: Settings) -> None:
+    settings.EMAIL_CHANGE_LINK_TIMEOUT = 1800
+
+    assert EmailChangeSigner().describe_lifetime() == "30\xa0minutes"

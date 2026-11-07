@@ -42,10 +42,11 @@ env:
   DJANGO_SESSION_ABSOLUTE_HOURS: "12"
   DJANGO_EMAIL_LINK_TIMEOUT_HOURS: "72"
   DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES: "60"
+  DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES: "1440"
   DJANGO_AUDIT_RETENTION_DAYS: "90"
   DJANGO_LOGGING: '{"level":"INFO","format":"json"}'
-  DJANGO_THROTTLE_LIMITS: '{"login":{"email_ip_max_events":5,"email_ip_window_seconds":900,"ip_max_events":100,"ip_window_seconds":900,"email_max_events":10,"email_window_seconds":3600,"email_backoff_seconds":60},"password_reset":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300,"ip_max_events":100,"ip_window_seconds":3600},"signup":{"ip_max_events":50,"ip_window_seconds":3600},"verification_email":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300}}'
-  DJANGO_EMAIL: '{"host":"localhost","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>"}'
+  DJANGO_THROTTLE_LIMITS: '{"login":{"email_ip_max_events":5,"email_ip_window_seconds":900,"ip_max_events":100,"ip_window_seconds":900,"email_max_events":10,"email_window_seconds":3600,"email_backoff_seconds":60},"password_reset":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300,"ip_max_events":100,"ip_window_seconds":3600},"signup":{"ip_max_events":50,"ip_window_seconds":3600},"verification_email":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300},"current_password":{"user_max_events":5,"user_window_seconds":86400},"email_change":{"user_max_events":3,"user_window_seconds":86400,"user_cooldown_seconds":1200}}'
+  DJANGO_EMAIL: '{"host":"localhost","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>","support_email":"support@example.com"}'
   DJANGO_EMAIL_HOST_USER: ""
   DJANGO_EMAIL_HOST_PASSWORD: ""
   FORWARDED_ALLOW_IPS: "127.0.0.1,::1"
@@ -136,6 +137,7 @@ jobs:
       - *checkout
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
       # Layers cached in GitHub's Actions cache; load: the image goes on to docker save and run.
+      # runtime is never cached, so its apt upgrade always fetches today's Debian fixes.
       - name: Build Image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
@@ -144,6 +146,7 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          no-cache-filters: runtime
       # The settings production runs with, checked in the image that ships.
       - name: Deploy Check
         run: |

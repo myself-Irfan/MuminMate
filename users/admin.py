@@ -55,7 +55,7 @@ class UserAdmin(auth_admin.UserAdmin[User]):
             super().save_model(request, obj, form, change)
             # Not changed_data: it compares before the model normalizes the case.
             if obj.email != form.initial["email"]:
-                EmailChangeService().request_confirmation(obj)
+                EmailChangeService().complete_admin_change(obj, form.initial["email"])
             return
         created = InviteService().invite(email=obj.email, is_staff=obj.is_staff)
         # The admin logs and redirects with obj: give it the new pk.

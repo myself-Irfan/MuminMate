@@ -16,6 +16,7 @@ from django.utils.http import urlsafe_base64_encode
 from users.models import User
 from users.tokens import (
     ConsumerPasswordResetTokenGenerator,
+    EmailChangeSigner,
     EmailVerificationTokenGenerator,
     InviteTokenGenerator,
 )
@@ -32,6 +33,7 @@ class EmailService:
         generator = EmailVerificationTokenGenerator()
         self._send(
             user=user,
+            to=user.email,
             subject="Confirm your email for MuminMate",
             template_name="users/emails/verify_email",
             context={
@@ -48,6 +50,7 @@ class EmailService:
         generator = ConsumerPasswordResetTokenGenerator()
         self._send(
             user=user,
+            to=user.email,
             subject="Reset your MuminMate password",
             template_name="users/emails/password_reset",
             context={
@@ -67,11 +70,59 @@ class EmailService:
         generator = InviteTokenGenerator()
         self._send(
             user=user,
+            to=user.email,
             subject="You're invited to MuminMate",
             template_name="users/emails/invite",
             context={
                 "invite_url": self._build_link("invite_confirm", user, generator.make_token(user)),
                 "expiry": generator.describe_lifetime(),
+            },
+        )
+
+    def send_password_changed_email(self, user_id: int) -> None:
+        user = self._get_user(user_id)
+        if user is None or not user.is_active:
+            logger.info("password_changed_email_skipped", user_id=user_id)
+            return
+        self._send(
+            user=user,
+            to=user.email,
+            subject="Your MuminMate password was changed",
+            template_name="users/emails/password_changed",
+            context={"reset_url": f"{settings.PUBLIC_URL}{reverse('password_reset')}"},
+        )
+
+    # The task carries the old address: the row already holds the new one.
+    def send_email_changed_notice(self, user_id: int, old_email: str) -> None:
+        user = self._get_user(user_id)
+        if user is None or not user.is_active:
+            logger.info("email_changed_notice_skipped", user_id=user_id)
+            return
+        self._send(
+            user=user,
+            to=old_email,
+            reply_to=settings.SUPPORT_EMAIL,
+            subject="Your MuminMate email was changed",
+            template_name="users/emails/email_changed",
+            context={"new_email": user.email, "support_email": settings.SUPPORT_EMAIL},
+        )
+
+    # Sent to the new address: opening the link proves the user owns it.
+    def send_email_change_link(self, user_id: int, new_email: str) -> None:
+        user = self._get_user(user_id)
+        if user is None or not user.is_active:
+            logger.info("email_change_link_skipped", user_id=user_id)
+            return
+        signer = EmailChangeSigner()
+        path = reverse("email_change_confirm", kwargs={"token": signer.make_token(user, new_email)})
+        self._send(
+            user=user,
+            to=new_email,
+            subject="Confirm your new MuminMate email",
+            template_name="users/emails/email_change",
+            context={
+                "confirm_url": f"{settings.PUBLIC_URL}{path}",
+                "expiry": signer.describe_lifetime(),
             },
         )
 
@@ -87,12 +138,20 @@ class EmailService:
         return f"{settings.PUBLIC_URL}{path}"
 
     def _send(
-        self, *, user: User, subject: str, template_name: str, context: dict[str, object]
+        self,
+        *,
+        user: User,
+        to: str,
+        subject: str,
+        template_name: str,
+        context: dict[str, object],
+        reply_to: str | None = None,
     ) -> None:
         mail = EmailMultiAlternatives(
             subject=subject,
             body=render_to_string(f"{template_name}.txt", context),
-            to=[user.email],
+            to=[to],
+            reply_to=[reply_to] if reply_to is not None else None,
         )
         mail.attach_alternative(render_to_string(f"{template_name}.html", context), "text/html")
         try:

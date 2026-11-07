@@ -1,0 +1,9 @@
+<details{% if open_row == name %} open{% endif %}>
+  <summary><span class="row-label">{{ label }}</span> <span class="row-value">{{ value }}</span></summary>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="row" value="{{ name }}">
+    {{ form }}
+    <button type="submit">{{ button|default:"Save" }}</button>
+  </form>
+</details>
