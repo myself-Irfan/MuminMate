@@ -1,0 +1,15 @@
+{% extends "app_base.html" %}
+
+{% block title %}Delete chat{% endblock %}
+
+{% block content %}
+  <section class="chat-thread">
+    <h1>Delete this chat?</h1>
+    <p>&ldquo;{{ thread.title }}&rdquo; will be removed from your chats.</p>
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="danger">Delete</button>
+    </form>
+    <p class="note"><a href="{% url 'thread_detail' thread.public_id %}">Cancel</a></p>
+  </section>
+{% endblock %}

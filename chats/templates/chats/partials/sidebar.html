@@ -1,0 +1,18 @@
+<div class="sidebar-inner">
+  <a class="brand" href="{% url 'home' %}">{% include "partials/logo.html" %} MuminMate</a>
+  <form method="post" action="{% url 'thread_create' %}">
+    {% csrf_token %}
+    <button type="submit" class="new-chat">New chat</button>
+  </form>
+  <nav class="thread-nav" aria-label="Your chats">
+    <p class="sidebar-label">Your chats</p>
+    <ul class="thread-list">
+      {% include "chats/partials/thread_rows.html" %}
+    </ul>
+    <p class="sidebar-empty">
+      <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-4 3.5V16h0a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      Your chats will appear here.
+    </p>
+  </nav>
+  {% include "chats/partials/account_menu.html" %}
+</div>

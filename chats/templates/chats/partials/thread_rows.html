@@ -1,0 +1,8 @@
+{% for thread in sidebar.threads %}
+  {% include "chats/partials/thread_row.html" with open_id=sidebar.open_id %}
+{% endfor %}
+{% if sidebar.next_after %}
+  <li class="thread-more">
+    <a href="{% url 'home' %}?after={{ sidebar.next_after }}" hx-get="{% url 'thread_list' %}?after={{ sidebar.next_after }}" hx-target="closest li" hx-swap="outerHTML">Show more</a>
+  </li>
+{% endif %}

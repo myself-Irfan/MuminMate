@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 from django.conf import settings as django_settings
 from django.contrib.auth.models import Permission
+from django.test import Client
 from django.utils import timezone
 from pytest_django import Settings
 
@@ -41,6 +42,12 @@ def consumer_user(db: None, password: str) -> User:
     return User.objects.create_user(
         email="irfan@example.com", password=password, email_verified_at=timezone.now()
     )
+
+
+@pytest.fixture
+def consumer_client(client: Client, consumer_user: User) -> Client:
+    client.force_login(consumer_user)
+    return client
 
 
 @pytest.fixture

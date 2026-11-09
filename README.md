@@ -47,6 +47,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES` | Password reset links expire after this long (`60`); shorter than the email link timeout, and a change also applies to links already sent |
 | `DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES` | Email change links expire after this long (`1440`); a change also applies to links already sent |
 | `DJANGO_AUDIT_RETENTION_DAYS` | `deleteexpiredauditevents` deletes request audit rows older than this (`90`) |
+| `DJANGO_THREAD_LIST_PAGE_SIZE` | Chats the sidebar lists before "Show more" (`15`); 1 to 50 |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
 | `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup, verification email, current password and email change limits as one-line JSON (see Throttling below) |
 | `DJANGO_EMAIL` | Mail server as one-line JSON (see Email below) |
@@ -188,8 +189,8 @@ The first login goes to `/accounts/welcome/` (unless the login link carried its 
 "What should we call you?" and the date of birth (both required; the date from 1900, not in the
 future), plus gender and "What do you mostly do these days?" (both optional). "Skip" goes home and
 saves nothing. Once a profile exists, Welcome sends you to Profile instead. `/accounts/profile/`
-edits one field per row; without a saved profile it shows the whole form once. The header links to
-it, showing the display name, or the email until there's a profile.
+edits one field per row; without a saved profile it shows the whole form once. The account menu at
+the bottom of the sidebar links to it, showing the display name, or the email until there's a profile.
 
 ## Password reset
 
@@ -234,6 +235,39 @@ meantime, the page says so and nothing changes.
 The new email counts as confirmed (the link proved the inbox). The old address then gets a notice
 naming the new one, with `support_email` as its Reply-To: someone who took over the account can
 change the email, so the owner's way back is a person.
+
+## Threads
+
+A user's conversations are threads (`chats` app, table `threads`). A thread starts as "New chat"
+(a title can't be blank, up to 200 characters, any script). URLs carry its random `public_id`
+(UUID4), never the sequential id. Every lookup is by owner: another user's thread is a 404, exactly
+like one that doesn't exist. Deleting hides a thread (`is_active`) and keeps the row; deleting the
+account removes its threads for good.
+
+Every logged-in page except Welcome has the chats sidebar (`templates/app_base.html`): New chat, your
+chats newest first, and the account menu (Account, which opens Profile, and Log out; the Profile |
+Settings tabs switch between the two). It lists `DJANGO_THREAD_LIST_PAGE_SIZE` chats; "Show more"
+loads the next ones after the last shown. On a phone
+the sidebar opens as a drawer from the menu button. Each chat's menu renames it in place or deletes
+it after a confirmation; deleting the open chat goes home. Messages come next: a chat page says "No
+messages yet."
+
+| Method | Path | |
+|---|---|---|
+| GET | `/` | Home: greeting and New chat |
+| POST | `/chats/new/` | Create a chat and open it |
+| GET | `/chats/page/?after=<id>` | The next sidebar rows (htmx; without htmx, home with that page) |
+| GET | `/chats/<id>/` | A chat |
+| GET | `/chats/<id>/row/` | One sidebar row (htmx: cancel a rename) |
+| GET, POST | `/chats/<id>/rename/` | Rename form and save; a blank title returns 422 with the form |
+| GET, POST | `/chats/<id>/delete/` | Confirm page and delete |
+
+The pages work without JavaScript; with it, [htmx](https://htmx.org) 2 (bundled by `django-htmx`,
+self-hosted) swaps just the row, and `static/js/` adds what HTML can't do yet: menus close on an
+outside click or Esc (`menus.js`), dialogs for browsers without Invoker Commands and the delete
+confirmation (`dialogs.js`), and a "Something went wrong. Try again." banner when a request fails
+(`htmx_errors.js`). htmx runs with `allowEval: false` and its inline indicator styles off, so the
+strict CSP stays as is.
 
 ## Sessions
 
@@ -600,13 +634,15 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 
 ```
 config/    settings, env, URL, API, admin site and Celery wiring
-core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking
+core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking,
+           created/updated timestamp base models
 audit/     request audit: middleware, row building, the audit task and its own database
+chats/     conversation threads, owner-only: home, the sidebar and the chat pages
 users/     custom user model (email login, no username), manager, admin, signup, email verification,
            invites, password reset, login/logout, profile, settings (email and password change),
            session timeouts, throttling, auth event logging
-templates/ shared layout (base.html), partials, email layouts and the home page
-static/    CSS, fonts, logos (self-hosted, with licences)
+templates/ shared layouts (base.html; app_base.html with the chats sidebar), partials, email layouts
+static/    CSS, fonts, logos, page scripts (self-hosted, with licences)
 tests/     mirrors the source tree
 load-tests/ k6 load tests
 ```

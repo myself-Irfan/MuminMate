@@ -1,0 +1,19 @@
+{% with name=user.profile.display_name|default:user.email %}
+  <details class="account-menu" data-menu>
+    <summary>
+      <span class="avatar" aria-hidden="true">{{ name|first|upper }}</span>
+      <span class="names">
+        <span title="{{ name }}">{{ name }}</span>
+        {% if name != user.email %}<span class="sub" title="{{ user.email }}">{{ user.email }}</span>{% endif %}
+      </span>
+    </summary>
+    <div class="menu">
+      <a href="{% url 'profile' %}">Account</a>
+      <hr>
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit">Log out</button>
+      </form>
+    </div>
+  </details>
+{% endwith %}

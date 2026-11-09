@@ -8,12 +8,15 @@
   <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
   <link rel="stylesheet" href="{% static 'vendor/pico/pico.fluid.classless.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+  {% block head %}{% endblock %}
 </head>
-<body>
-  {% include "partials/header.html" %}
-  <main>
-    {% include "partials/messages.html" %}
-    {% block content %}{% endblock %}
-  </main>
+<body{% block body_attrs %}{% endblock %}>
+  {% block body %}
+    {% include "partials/header.html" %}
+    <main>
+      {% include "partials/messages.html" %}
+      {% block content %}{% endblock %}
+    </main>
+  {% endblock %}
 </body>
 </html>

@@ -199,18 +199,26 @@ def test_profile_page_redirects_privileged_user_to_admin(client: Client, staff_u
 
 
 @pytest.mark.usefixtures("profile")
-def test_header_links_display_name_to_profile(consumer_client: Client) -> None:
+def test_account_menu_shows_display_name_then_email(consumer_client: Client) -> None:
     response = consumer_client.get("/")
 
+    assertContains(response, '<span title="Irfan">Irfan</span>', html=True)
     assertContains(
-        response,
-        '<a class="account-link" href="/accounts/profile/" title="Irfan">Irfan</a>',
-        html=True,
+        response, '<span class="sub" title="irfan@example.com">irfan@example.com</span>', html=True
     )
 
 
-def test_header_links_email_to_profile_when_no_profile(consumer_client: Client) -> None:
+def test_account_menu_shows_email_once_when_no_profile(consumer_client: Client) -> None:
     response = consumer_client.get("/")
+
+    assertContains(
+        response, '<span title="irfan@example.com">irfan@example.com</span>', html=True, count=2
+    )
+    assertNotContains(response, 'class="sub"')
+
+
+def test_welcome_header_links_email_to_profile(consumer_client: Client) -> None:
+    response = consumer_client.get("/accounts/welcome/")
 
     assertContains(
         response,
