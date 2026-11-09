@@ -1,0 +1,10 @@
+<li class="thread-row thread-rename">
+  <form method="post" action="{% url 'thread_rename' thread.public_id %}" hx-post="{% url 'thread_rename' thread.public_id %}" hx-target="closest li" hx-swap="outerHTML">
+    {% csrf_token %}
+    {{ form }}
+    <div class="rename-actions">
+      <button type="submit">Save</button>
+      <a href="{% url 'thread_detail' thread.public_id %}" hx-get="{% url 'thread_row' thread.public_id %}" hx-target="closest li" hx-swap="outerHTML">Cancel</a>
+    </div>
+  </form>
+</li>

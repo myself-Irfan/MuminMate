@@ -58,11 +58,13 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.forms",
     "csp",
+    "django_htmx",
     "ninja",
     "django_structlog",
     "core",
     "users",
     "audit",
+    "chats",
 ]
 
 MIDDLEWARE = [
@@ -74,6 +76,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django_htmx.middleware.HtmxMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "users.middleware.SessionTimeoutMiddleware",
@@ -129,6 +132,7 @@ DATABASES = {
 }
 DATABASE_ROUTERS = ["config.db_router.LogRouter"]
 AUDIT_RETENTION_DAYS = env.django_audit_retention_days
+THREAD_LIST_PAGE_SIZE = env.django_thread_list_page_size
 
 CELERY_BROKER_URL = env.rabbitmq_url
 CELERY_TASK_DEFAULT_QUEUE = "default"

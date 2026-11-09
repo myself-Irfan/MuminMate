@@ -67,6 +67,8 @@ class Env(BaseSettings):
     django_password_reset_link_timeout_minutes: PositiveInt
     django_email_change_link_timeout_minutes: PositiveInt
     django_audit_retention_days: PositiveInt
+    # Capped: the sidebar renders on every page, so a typo must not bring back an unbounded list.
+    django_thread_list_page_size: Annotated[int, Field(ge=1, le=50)]
     django_logging: LogSettings
     django_throttle_limits: ThrottleLimits
     django_email: EmailSettings

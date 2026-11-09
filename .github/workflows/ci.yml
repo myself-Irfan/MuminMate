@@ -44,6 +44,7 @@ env:
   DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES: "60"
   DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES: "1440"
   DJANGO_AUDIT_RETENTION_DAYS: "90"
+  DJANGO_THREAD_LIST_PAGE_SIZE: "15"
   DJANGO_LOGGING: '{"level":"INFO","format":"json"}'
   DJANGO_THROTTLE_LIMITS: '{"login":{"email_ip_max_events":5,"email_ip_window_seconds":900,"ip_max_events":100,"ip_window_seconds":900,"email_max_events":10,"email_window_seconds":3600,"email_backoff_seconds":60},"password_reset":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300,"ip_max_events":100,"ip_window_seconds":3600},"signup":{"ip_max_events":50,"ip_window_seconds":3600},"verification_email":{"email_max_events":3,"email_window_seconds":3600,"email_cooldown_seconds":300},"current_password":{"user_max_events":5,"user_window_seconds":86400},"email_change":{"user_max_events":3,"user_window_seconds":86400,"user_cooldown_seconds":1200}}'
   DJANGO_EMAIL: '{"host":"localhost","port":1025,"use_tls":false,"timeout_seconds":10,"default_from_email":"MuminMate <no-reply@localhost>","support_email":"support@example.com"}'

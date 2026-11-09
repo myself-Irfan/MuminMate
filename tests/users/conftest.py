@@ -79,12 +79,6 @@ def staff_client(client: Client, staff_user: User) -> Client:
     return client
 
 
-@pytest.fixture
-def consumer_client(client: Client, consumer_user: User) -> Client:
-    client.force_login(consumer_user)
-    return client
-
-
 # Small limits, independent of .env.
 @pytest.fixture
 def login_limits(settings: Settings) -> LoginLimits:

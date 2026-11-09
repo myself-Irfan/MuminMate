@@ -172,7 +172,7 @@ nav form {
   margin: 0;
 }
 
-nav [type="submit"] {
+body > header nav [type="submit"] {
   --pico-background-color: transparent;
   --pico-border-color: var(--pico-muted-border-color);
   --pico-color: var(--pico-primary);
@@ -183,8 +183,8 @@ nav [type="submit"] {
   white-space: nowrap;
 }
 
-nav [type="submit"]:hover,
-nav [type="submit"]:focus-visible {
+body > header nav [type="submit"]:hover,
+body > header nav [type="submit"]:focus-visible {
   --pico-background-color: transparent;
   --pico-border-color: var(--pico-primary);
   --pico-color: var(--pico-primary-hover);
@@ -271,6 +271,11 @@ nav [type="submit"]:focus-visible {
   border-radius: var(--pico-border-radius);
   background-color: var(--pico-card-background-color);
   font-size: 0.875rem;
+}
+
+/* A refusal must not look like a confirmation: error banners take the field-error colour. */
+.messages p.error {
+  border-left-color: var(--pico-del-color);
 }
 
 /* Django's field errors, styled like Pico's hint under an input. */
@@ -406,6 +411,502 @@ nav [type="submit"]:focus-visible {
   width: auto;
   margin-bottom: 0;
   padding-inline: 1.5rem;
+}
+
+/* Logged-in layout (app_base.html): the chats sidebar beside the page; on phones, a drawer. */
+body.app {
+  flex-direction: row;
+  /* Pico points --pico-color at the link colour inside every <a>; this keeps body ink. */
+  --mm-ink: var(--pico-color);
+  --mm-sidebar-background: color-mix(in srgb, var(--pico-background-color) 88%, var(--mm-gold));
+  --mm-row-tint: color-mix(in srgb, var(--pico-primary) 10%, transparent);
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  flex: none;
+  width: 17rem;
+  height: 100vh;
+  height: 100dvh;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid var(--pico-muted-border-color);
+  background-color: var(--mm-sidebar-background);
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.sidebar-inner .brand {
+  padding-inline: 0.5rem;
+  font-size: 1.3rem;
+}
+
+.sidebar-inner form {
+  margin: 0;
+}
+
+.new-chat {
+  --pico-background-color: var(--pico-card-background-color);
+  --pico-border-color: var(--pico-muted-border-color);
+  --pico-color: var(--pico-h1-color);
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.925rem;
+  text-align: start;
+}
+
+.new-chat:hover,
+.new-chat:focus-visible {
+  --pico-background-color: var(--pico-card-background-color);
+  --pico-border-color: var(--pico-primary);
+  --pico-color: var(--pico-primary-hover);
+}
+
+.thread-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar-label {
+  margin: 0 0.5rem 0.35rem;
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+}
+
+.sidebar-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: clamp(1.5rem, 6vh, 3rem) 0.5rem 0;
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--pico-muted-color);
+}
+
+.sidebar-empty svg {
+  opacity: 0.7;
+}
+
+/* CSS, not the template, swaps them: deleting the last chat over htmx must show the hint too. */
+.thread-nav:has(.thread-list li) .sidebar-empty,
+.thread-nav:not(:has(.thread-list li)) :is(.sidebar-label, .thread-list) {
+  display: none;
+}
+
+/* Beats Pico's negative margins on nav lists and links. */
+.thread-nav .thread-list {
+  margin: 0;
+  padding: 0;
+}
+
+.thread-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--pico-border-radius);
+  list-style: none;
+}
+
+.thread-row:hover,
+.thread-row:has([aria-current="page"]) {
+  background-color: var(--mm-row-tint);
+}
+
+.thread-nav .thread-link {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  overflow: hidden;
+  font-size: 0.925rem;
+  color: var(--mm-ink);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-nav .thread-link[aria-current="page"] {
+  font-weight: 600;
+  color: var(--pico-h1-color);
+}
+
+.thread-nav .thread-more a {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* Menus: native <details> (static/js/menus.js closes them on an outside click or Esc). */
+.row-menu,
+.account-menu {
+  position: relative;
+  margin: 0;
+}
+
+.row-menu > summary {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--pico-border-radius);
+  color: var(--pico-muted-color);
+  line-height: 1;
+}
+
+.row-menu > summary::after,
+.account-menu > summary::after {
+  display: none;
+}
+
+details.row-menu[open] > summary,
+details.account-menu[open] > summary {
+  margin-bottom: 0;
+}
+
+/* Only hover devices hide the row menu button: a touch screen could never reveal it. */
+@media (hover: hover) {
+  .thread-row:not(:hover, :focus-within, :has([aria-current="page"])) .row-menu:not([open]) > summary {
+    opacity: 0;
+  }
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 10rem;
+  padding: 0.3rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: calc(var(--pico-border-radius) * 1.5);
+  background-color: var(--pico-card-background-color);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--pico-color) 14%, transparent);
+}
+
+.menu a,
+.menu button {
+  --pico-background-color: transparent;
+  --pico-border-color: transparent;
+  --pico-color: var(--mm-ink);
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--pico-border-radius);
+  font-size: 0.9rem;
+  color: var(--mm-ink);
+  text-align: start;
+  text-decoration: none;
+}
+
+.menu a:hover,
+.menu a:focus-visible,
+.menu button:hover,
+.menu button:focus-visible {
+  --pico-background-color: var(--mm-row-tint);
+  background-color: var(--mm-row-tint);
+}
+
+.menu .danger {
+  color: var(--pico-del-color);
+}
+
+.menu hr {
+  margin: 0.2rem 0;
+}
+
+.account-menu > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--pico-border-radius);
+  color: var(--pico-color);
+  line-height: 1.25;
+}
+
+.account-menu > summary:hover,
+.account-menu[open] > summary {
+  background-color: var(--mm-row-tint);
+}
+
+.account-menu .menu {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 0.35rem);
+  left: 0;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: var(--pico-h1-color);
+  color: var(--pico-background-color);
+  font-weight: 600;
+}
+
+.names {
+  display: grid;
+  min-width: 0;
+}
+
+.names span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.names .sub {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+}
+
+/* Inline rename: the row becomes a one-field form; the label stays for screen readers. */
+.thread-rename form {
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.25rem;
+}
+
+.thread-rename label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.thread-rename input {
+  margin-bottom: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  height: auto;
+  font-size: 0.9rem;
+}
+
+.thread-rename .errorlist {
+  margin: -0.2rem 0 0.4rem;
+}
+
+.rename-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.rename-actions button {
+  width: auto;
+  margin: 0;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+.app-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-main > main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: clamp(0.75rem, 3vh, 2rem) clamp(1rem, 3vw, 2.5rem);
+}
+
+.chat-home {
+  width: 100%;
+  max-width: var(--mm-card-width);
+  margin: auto;
+  text-align: center;
+}
+
+.chat-home .greeting-latin {
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.chat-home .note {
+  margin: 0 0 1.25rem;
+}
+
+.chat-home button {
+  width: auto;
+  padding-inline: 2rem;
+}
+
+.chat-thread {
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+}
+
+.chat-thread h1 {
+  margin-bottom: 0.25rem;
+  font-size: 1.75rem;
+  overflow-wrap: anywhere;
+}
+
+.chat-thread .note {
+  margin-top: 0;
+}
+
+.chat-thread form button {
+  width: auto;
+  padding-inline: 1.5rem;
+}
+
+/* A destructive action: red, never the green that means "go ahead". */
+button.danger {
+  --pico-background-color: var(--pico-del-color);
+  --pico-border-color: var(--pico-del-color);
+  --pico-color: var(--pico-primary-inverse);
+}
+
+button.danger:hover,
+button.danger:focus-visible {
+  --pico-background-color: color-mix(in srgb, var(--pico-del-color) 85%, var(--pico-color));
+  --pico-border-color: color-mix(in srgb, var(--pico-del-color) 85%, var(--pico-color));
+  --pico-color: var(--pico-primary-inverse);
+}
+
+.confirm-dialog > article {
+  max-width: 26rem;
+}
+
+.confirm-dialog h2 {
+  margin-bottom: 0.5rem;
+  font-family: var(--mm-font-display);
+  font-size: 1.5rem;
+  color: var(--pico-h1-color);
+}
+
+.confirm-dialog footer {
+  background-color: var(--pico-card-background-color);
+}
+
+.confirm-dialog footer button {
+  width: auto;
+}
+
+.confirm-dialog .cancel {
+  --pico-background-color: transparent;
+  --pico-border-color: var(--pico-muted-border-color);
+  --pico-color: var(--pico-h1-color);
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: none;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  background-color: var(--pico-background-color);
+}
+
+.app-header form {
+  margin: 0;
+}
+
+.app-header-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mm-font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--pico-h1-color);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 44px: WCAG 2.5.5 target size for the phone controls. */
+.icon-button {
+  --pico-background-color: transparent;
+  --pico-border-color: transparent;
+  --pico-color: var(--pico-h1-color);
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: 0;
+  padding: 0;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+  --pico-background-color: var(--mm-row-tint);
+  --pico-border-color: transparent;
+  --pico-color: var(--pico-h1-color);
+}
+
+dialog.drawer {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.drawer-panel {
+  position: relative;
+  width: min(20rem, 85vw);
+  height: 100%;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid var(--pico-muted-border-color);
+  background-color: var(--mm-sidebar-background);
+}
+
+.drawer-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 1;
+}
+
+html:has(dialog[open]:modal) {
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .sidebar {
+    display: none;
+  }
+
+  .app-header {
+    display: flex;
+  }
+
+  .thread-nav .thread-link {
+    padding-block: 0.7rem;
+  }
+
+  .row-menu > summary {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 
 @media (max-height: 760px) {

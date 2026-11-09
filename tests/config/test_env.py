@@ -107,6 +107,7 @@ def env_vars(
         "DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES": "60",
         "DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES": "1440",
         "DJANGO_AUDIT_RETENTION_DAYS": "90",
+        "DJANGO_THREAD_LIST_PAGE_SIZE": "15",
         "DJANGO_LOGGING": json.dumps(logging_data),
         "DJANGO_THROTTLE_LIMITS": json.dumps(throttle_limits_data),
         "DJANGO_PUBLIC_URL": "https://muminmate.example",
@@ -172,6 +173,8 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         ("DJANGO_SESSION_ABSOLUTE_HOURS", "0"),
         ("DJANGO_EMAIL_LINK_TIMEOUT_HOURS", "0"),
         ("DJANGO_AUDIT_RETENTION_DAYS", "0"),
+        ("DJANGO_THREAD_LIST_PAGE_SIZE", "0"),
+        ("DJANGO_THREAD_LIST_PAGE_SIZE", "51"),
         ("DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES", "0"),
         # Email links last 72 hours in env_vars: 4320 minutes.
         ("DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES", "4320"),
@@ -210,6 +213,8 @@ def test_env_fails_when_var_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         "session_absolute_zero",
         "email_link_timeout_zero",
         "audit_retention_zero",
+        "thread_list_page_size_zero",
+        "thread_list_page_size_over_cap",
         "reset_link_timeout_zero",
         "reset_link_not_shorter_than_email_link",
         "email_change_link_timeout_zero",
@@ -249,6 +254,14 @@ def test_session_absolute_may_equal_idle(monkeypatch: pytest.MonkeyPatch) -> Non
     env = Env(_env_file=None)
 
     assert env.django_session_absolute_hours == 3
+
+
+def test_thread_list_page_size_may_equal_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DJANGO_THREAD_LIST_PAGE_SIZE", "50")
+
+    env = Env(_env_file=None)
+
+    assert env.django_thread_list_page_size == 50
 
 
 def test_throttle_limits_parsed_from_json() -> None:

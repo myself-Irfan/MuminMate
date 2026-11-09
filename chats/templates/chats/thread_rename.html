@@ -1,0 +1,15 @@
+{% extends "app_base.html" %}
+
+{% block title %}Rename chat{% endblock %}
+
+{% block content %}
+  <section class="chat-thread">
+    <h1>Rename chat</h1>
+    <form method="post">
+      {% csrf_token %}
+      {{ form }}
+      <button type="submit">Save</button>
+    </form>
+    <p class="note"><a href="{% url 'thread_detail' thread.public_id %}">Cancel</a></p>
+  </section>
+{% endblock %}

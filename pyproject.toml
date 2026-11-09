@@ -9,6 +9,7 @@ dependencies = [
     "celery>=5.6,<6",
     "django[argon2]>=5.2,<5.3",
     "django-csp>=4.0,<5",
+    "django-htmx>=1.29,<2",
     "django-ninja>=1.7,<2",
     "django-structlog[celery]>=10.1,<11",
     "django-stubs-ext>=6.1,<7",
@@ -60,7 +61,7 @@ testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers", "-ra"]
 
 [tool.coverage.run]
-source = ["audit", "config", "core", "users"]
+source = ["audit", "chats", "config", "core", "users"]
 omit = ["*/migrations/*", "config/asgi.py", "config/wsgi.py"]
 
 [tool.coverage.report]

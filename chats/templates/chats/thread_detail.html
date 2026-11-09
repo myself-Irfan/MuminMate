@@ -1,0 +1,12 @@
+{% extends "app_base.html" %}
+
+{% block title %}{{ thread.title }}{% endblock %}
+
+{% block header_title %}{{ thread.title }}{% endblock %}
+
+{% block content %}
+  <section class="chat-thread">
+    <h1>{{ thread.title }}</h1>
+    <p class="note">No messages yet.</p>
+  </section>
+{% endblock %}

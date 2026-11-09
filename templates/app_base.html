@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load static django_htmx sidebar %}
+
+{% block head %}
+  {# htmx 2's default responseHandling, plus 422: a form with errors replaces the form. #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}'>
+  {% htmx_script %}
+  <script src="{% static 'js/menus.js' %}" defer></script>
+  <script src="{% static 'js/dialogs.js' %}" defer></script>
+  <script src="{% static 'js/htmx_errors.js' %}" defer></script>
+{% endblock %}
+
+{% block body_attrs %} class="app" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'{% endblock %}
+
+{% block body %}
+  {% sidebar as sidebar %}
+  <aside class="sidebar" aria-label="Chats">
+    {% include "chats/partials/sidebar.html" %}
+  </aside>
+  <dialog id="chats-drawer" class="drawer" aria-label="Chats">
+    <aside class="drawer-panel">
+      <button type="button" class="icon-button drawer-close" commandfor="chats-drawer" command="close" aria-label="Close chats">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      {% include "chats/partials/sidebar.html" %}
+    </aside>
+  </dialog>
+  <div class="app-main">
+    <header class="app-header">
+      <button type="button" class="icon-button" commandfor="chats-drawer" command="show-modal" aria-label="Open chats">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <span class="app-header-title">{% block header_title %}MuminMate{% endblock %}</span>
+      <form method="post" action="{% url 'thread_create' %}">
+        {% csrf_token %}
+        <button type="submit" class="icon-button" aria-label="New chat">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </form>
+    </header>
+    <main>
+      {% include "partials/messages.html" %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% include "chats/partials/delete_dialog.html" %}
+{% endblock %}

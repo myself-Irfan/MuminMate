@@ -1,0 +1,12 @@
+<li class="thread-row">
+  <a class="thread-link" href="{% url 'thread_detail' thread.public_id %}"{% if thread.public_id == open_id %} aria-current="page"{% endif %} title="{{ thread.title }}">{{ thread.title }}</a>
+  <details class="row-menu" data-menu>
+    <summary aria-label="Options for {{ thread.title }}">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></svg>
+    </summary>
+    <div class="menu">
+      <a href="{% url 'thread_rename' thread.public_id %}" hx-get="{% url 'thread_rename' thread.public_id %}" hx-target="closest li" hx-swap="outerHTML">Rename</a>
+      <a href="{% url 'thread_delete' thread.public_id %}" class="danger" data-delete="{{ thread.title }}">Delete</a>
+    </div>
+  </details>
+</li>
