@@ -87,7 +87,7 @@ def test_login_rotates_session_key(client: Client, login_payload: dict[str, str]
 def test_login_fails_with_same_error(client: Client, credentials: dict[str, str]) -> None:
     response = client.post("/accounts/login/", credentials)
 
-    assert response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     errors = response.context["form"].non_field_errors().as_data()
     assert [error.code for error in errors] == ["invalid_login"]
     assert SESSION_KEY not in client.session
@@ -106,7 +106,11 @@ def test_login_refused_when_unverified_sends_new_link(
             "/accounts/login/", {"username": unverified_consumer_user.email, "password": password}
         )
 
-    assertContains(response, "Confirm your email to log in. Check your inbox for the link.")
+    assertContains(
+        response,
+        "Confirm your email to log in. Check your inbox for the link.",
+        status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+    )
     verification_email_delay.assert_called_once_with(unverified_consumer_user.pk)
     assert SESSION_KEY not in client.session
 
@@ -124,7 +128,11 @@ def test_login_refused_when_unverified_sends_no_link_within_cooldown(
         client.post("/accounts/login/", payload)
         response = client.post("/accounts/login/", payload)
 
-    assertContains(response, "Confirm your email to log in. Check your inbox for the link.")
+    assertContains(
+        response,
+        "Confirm your email to log in. Check your inbox for the link.",
+        status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+    )
     verification_email_delay.assert_called_once_with(unverified_consumer_user.pk)
 
 

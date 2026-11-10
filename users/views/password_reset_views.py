@@ -8,6 +8,7 @@ from django.db import transaction
 from django.http import HttpResponse
 
 from core.client_ip import get_client_ip
+from core.mixins import UnprocessableFormMixin
 from users.forms.password_reset_form import ConsumerPasswordResetForm
 from users.models import User
 from users.services.password_reset_service import PasswordResetService
@@ -18,7 +19,9 @@ from users.tokens import ConsumerPasswordResetTokenGenerator
 django_stubs_ext.monkeypatch(extra_classes=[SetPasswordMixin])
 
 
-class ConsumerPasswordResetView(auth_views.PasswordResetView):
+class ConsumerPasswordResetView(
+    UnprocessableFormMixin[PasswordResetForm], auth_views.PasswordResetView
+):
     form_class = ConsumerPasswordResetForm
     template_name = "registration/password_reset/form.html"
     url_name = "password_reset"
@@ -39,7 +42,9 @@ class ConsumerPasswordResetDoneView(auth_views.PasswordResetDoneView):
     url_name = "password_reset_done"
 
 
-class ConsumerPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
+class ConsumerPasswordResetConfirmView(
+    UnprocessableFormMixin[SetPasswordForm[User]], auth_views.PasswordResetConfirmView
+):
     template_name = "registration/password_reset/confirm.html"
     url_name = "password_reset_confirm"
     token_generator = ConsumerPasswordResetTokenGenerator()

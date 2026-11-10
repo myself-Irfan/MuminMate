@@ -109,6 +109,12 @@ Every error an API endpoint raises is RFC 9457 Problem+JSON (`application/proble
 failed field's `loc`, `msg` and `type`, never the submitted value. Unknown `/api/` paths and wrong
 methods still get Django's HTML 404 and 405.
 
+A page form with invalid input (login, signup, password reset, invite, profile, settings, chat
+rename) answers `422 Unprocessable Content` with the form and its errors, not Django's default `200`
+(RFC 9110): the request was understood, its content refused. Signup, password reset and the email
+change answer `429` when over their limits; a throttled login stays `422`, so it looks exactly like a
+wrong password.
+
 The health endpoints check the `Host` header like every other page. A Kubernetes probe sends the
 pod's IP as the host, which isn't in `DJANGO_ALLOWED_HOSTS`, so it would get a `400`: set the
 probe's `httpHeaders` to `Host: <public host>`. Never add the pod IP or `*` to the allowed hosts.
@@ -635,7 +641,7 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ```
 config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking,
-           created/updated timestamp base models
+           created/updated timestamp base models, the 422 mixin for invalid page forms
 audit/     request audit: middleware, row building, the audit task and its own database
 chats/     conversation threads, owner-only: home, the sidebar and the chat pages
 users/     custom user model (email login, no username), manager, admin, signup, email verification,

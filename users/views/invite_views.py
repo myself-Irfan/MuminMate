@@ -7,6 +7,7 @@ from django.http import HttpResponse
 from django.urls import reverse
 
 from core.client_ip import get_client_ip
+from core.mixins import UnprocessableFormMixin
 from users.models import User
 from users.services.invite_service import InviteService
 from users.tokens import InviteTokenGenerator
@@ -16,7 +17,9 @@ django_stubs_ext.monkeypatch(extra_classes=[SetPasswordMixin])
 
 
 # Django's set-password machinery; staff and consumers log in at different doors.
-class ConsumerInviteConfirmView(auth_views.PasswordResetConfirmView):
+class ConsumerInviteConfirmView(
+    UnprocessableFormMixin[SetPasswordForm[User]], auth_views.PasswordResetConfirmView
+):
     template_name = "registration/invite/confirm.html"
     url_name = "invite_confirm"
     token_generator = InviteTokenGenerator()

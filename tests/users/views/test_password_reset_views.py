@@ -71,6 +71,15 @@ def test_password_reset_request_redirects_to_done_for_unknown_email(client: Clie
 
 
 @pytest.mark.django_db
+def test_password_reset_request_returns_422_when_email_invalid(client: Client) -> None:
+    response = client.post("/accounts/password-reset/", {"email": "not-an-email"})
+
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    assert response.context["form"].has_error("email", "invalid")
+    assert not ThrottleEvent.objects.exists()
+
+
+@pytest.mark.django_db
 def test_password_reset_request_recorded_for_unknown_email(client: Client) -> None:
     client.post("/accounts/password-reset/", {"email": "nobody@example.com"})
 
@@ -115,6 +124,19 @@ def test_password_reset_link_sets_new_password(
     )
     consumer_user.refresh_from_db()
     assert consumer_user.check_password(new_password)
+
+
+def test_password_reset_link_returns_422_and_keeps_password_when_passwords_differ(
+    client: Client, consumer_user: User, password: str, set_password_path: str
+) -> None:
+    response = client.post(
+        set_password_path, {"new_password1": password + "-a", "new_password2": password + "-b"}
+    )
+
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    assert response.context["form"].has_error("new_password2", "password_mismatch")
+    consumer_user.refresh_from_db()
+    assert consumer_user.check_password(password)
 
 
 def test_password_reset_clears_own_login_failures(

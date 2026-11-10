@@ -11,6 +11,7 @@ from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView
 
 from core.client_ip import get_client_ip
+from core.mixins import UnprocessableFormMixin
 from users.exceptions import EmailTakenError
 from users.forms.signup_form import SignupForm
 from users.services.request_limit_service import RequestLimitService
@@ -18,7 +19,7 @@ from users.services.user_service import UserService
 
 
 @method_decorator(login_not_required, name="dispatch")
-class SignupView(FormView[SignupForm]):
+class SignupView(UnprocessableFormMixin[SignupForm], FormView[SignupForm]):
     form_class = SignupForm
     template_name = "registration/signup.html"
     url_name = "signup"

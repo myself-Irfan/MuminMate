@@ -63,8 +63,7 @@ def test_welcome_shows_errors_and_saves_nothing_when_invalid(
 ) -> None:
     response = consumer_client.post("/accounts/welcome/", {**profile_payload, "display_name": ""})
 
-    assert response.status_code == HTTPStatus.OK
-    assertContains(response, "This field is required.")
+    assertContains(response, "This field is required.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
     assert not Profile.objects.exists()
 
 
@@ -137,9 +136,8 @@ def test_profile_page_shows_full_form_errors_when_no_profile(
 ) -> None:
     response = consumer_client.post("/accounts/profile/", {**profile_payload, "display_name": ""})
 
-    assert response.status_code == HTTPStatus.OK
-    assertContains(response, "This field is required.")
-    assertContains(response, "Save and continue")
+    assertContains(response, "This field is required.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
+    assertContains(response, "Save and continue", status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
     assert not Profile.objects.exists()
 
 
@@ -169,8 +167,7 @@ def test_profile_row_shows_error_with_row_open(consumer_client: Client, profile:
         "/accounts/profile/", {"row": "display_name", "display_name": ""}
     )
 
-    assert response.status_code == HTTPStatus.OK
-    assertContains(response, "This field is required.")
+    assertContains(response, "This field is required.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
     assert response.context["open_row"] == "display_name"
     profile.refresh_from_db()
     assert profile.display_name == "Irfan"

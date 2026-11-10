@@ -1,4 +1,5 @@
 import io
+from http import HTTPStatus
 from unittest.mock import Mock
 
 import pytest
@@ -35,6 +36,21 @@ def test_invite_page_asks_to_set_password(client: Client, invite_path: str) -> N
 
     assertTemplateUsed(response, "registration/invite/confirm.html")
     assertContains(response, "Set your password")
+
+
+def test_invite_returns_422_and_sets_no_password_when_passwords_differ(
+    client: Client, invite_path: str, invited_user: User, password: str
+) -> None:
+    set_password_path = client.get(invite_path)["Location"]
+
+    response = client.post(
+        set_password_path, {"new_password1": password, "new_password2": password + "-b"}
+    )
+
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    assert response.context["form"].has_error("new_password2", "password_mismatch")
+    invited_user.refresh_from_db()
+    assert not invited_user.has_usable_password()
 
 
 def test_invite_page_shows_invalid_when_token_wrong(client: Client, invited_user: User) -> None:
