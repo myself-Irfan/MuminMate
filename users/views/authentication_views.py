@@ -4,11 +4,12 @@ from django.core.exceptions import NON_FIELD_ERRORS
 from django.http import HttpResponse
 from django.shortcuts import redirect
 
+from core.mixins import UnprocessableFormMixin
 from users.forms.authentication_forms import ConsumerAuthenticationForm
 from users.services.email_verification_service import EmailVerificationService
 
 
-class ConsumerLoginView(auth_views.LoginView):
+class ConsumerLoginView(UnprocessableFormMixin[AuthenticationForm], auth_views.LoginView):
     authentication_form = ConsumerAuthenticationForm
     redirect_authenticated_user = True
     url_name = "login"

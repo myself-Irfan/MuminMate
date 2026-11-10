@@ -1,3 +1,4 @@
+from http import HTTPStatus
 from typing import Any
 
 from django.contrib import messages
@@ -6,12 +7,13 @@ from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, HttpR
 from django.shortcuts import redirect
 from django.views.generic import FormView, TemplateView
 
+from core.mixins import UnprocessableFormMixin
 from users.forms.profile_form import ProfileFieldForm, ProfileForm
 from users.http import AuthenticatedHttpRequest
 from users.services.profile_service import ProfileService
 
 
-class WelcomeView(RedirectURLMixin, FormView[ProfileForm]):
+class WelcomeView(RedirectURLMixin, UnprocessableFormMixin[ProfileForm], FormView[ProfileForm]):
     request: AuthenticatedHttpRequest
     form_class = ProfileForm
     template_name = "users/welcome.html"
@@ -66,7 +68,7 @@ class ProfileView(TemplateView):
                 context["open_row"] = row
             else:
                 context["full_form"] = form
-            return self.render_to_response(context)
+            return self.render_to_response(context, status=HTTPStatus.UNPROCESSABLE_ENTITY)
         profiles.save_profile(request.user, form.cleaned_data)
         messages.success(request, "Your profile is saved.")
         return redirect(self.url_name)

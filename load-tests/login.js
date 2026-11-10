@@ -57,23 +57,34 @@ export function setup() {
   return { throttledEmail: `k6-throttled-${Date.now()}@example.com` };
 }
 
-function postLogin(email, password, endpoint) {
+function postLogin(email, password, endpoint, expectedStatuses) {
   http.cookieJar().clear(BASE_URL);
   const page = http.get(`${BASE_URL}${CONFIG.loginPath}`, { tags: { endpoint: "get_login" } });
   const token = page.html().find("input[name=csrfmiddlewaretoken]").attr("value");
   return http.post(
     `${BASE_URL}${CONFIG.loginPath}`,
     { username: email, password, csrfmiddlewaretoken: token },
-    { redirects: 0, tags: { endpoint } },
+    { redirects: 0, tags: { endpoint }, responseCallback: expectedStatuses },
   );
 }
 
 export function throttled(data) {
-  const res = postLogin(data.throttledEmail, PASSWORD, "post_throttled");
-  check(res, { "throttled login re-renders the form": (r) => r.status === 200 });
+  // A refused login is 422 (the form re-rendered), so k6 must not count it as a failed request.
+  const res = postLogin(
+    data.throttledEmail,
+    PASSWORD,
+    "post_throttled",
+    http.expectedStatuses({ min: 200, max: 399 }, 422),
+  );
+  check(res, { "throttled login is refused with 422": (r) => r.status === 422 });
 }
 
 export function valid() {
-  const res = postLogin(EMAIL, PASSWORD, "post_valid");
+  const res = postLogin(
+    EMAIL,
+    PASSWORD,
+    "post_valid",
+    http.expectedStatuses({ min: 200, max: 399 }),
+  );
   check(res, { "valid login redirects": (r) => r.status === 302 });
 }

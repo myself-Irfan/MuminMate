@@ -111,7 +111,7 @@ def test_password_change_shows_error_with_row_open_when_old_password_wrong(
         "/accounts/settings/", {**password_payload, "old_password": "wrong-placeholder-password"}
     )
 
-    assert response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.context["open_row"] == "password"
     assert response.context["forms"]["password"].has_error("old_password", "password_incorrect")
     consumer_user.refresh_from_db()
@@ -137,7 +137,7 @@ def test_password_change_counts_wrong_password_and_keeps_session_under_limit(
 
     response = consumer_client.post("/accounts/settings/", wrong_password_payload)
 
-    assert response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert consumer_client.session[SESSION_KEY] == str(consumer_user.pk)
     assert ThrottleEvent.objects.filter(user=consumer_user).count() == 3
 
@@ -216,7 +216,7 @@ def test_email_change_counts_wrong_password_and_shows_error_with_row_open(
         "/accounts/settings/", {**email_payload, "current_password": "wrong-placeholder-password"}
     )
 
-    assert response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.context["open_row"] == "email"
     assert response.context["forms"]["email"].has_error("current_password", "password_incorrect")
     assert ThrottleEvent.objects.filter(
@@ -240,6 +240,7 @@ def test_email_change_shows_error_and_counts_nothing_when_email_refused(
 ) -> None:
     response = consumer_client.post("/accounts/settings/", {**email_payload, "email": email})
 
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.context["forms"]["email"].has_error("email", code)
     assert not ThrottleEvent.objects.exists()
     email_change_link_delay.assert_not_called()

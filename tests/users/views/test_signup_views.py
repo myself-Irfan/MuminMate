@@ -106,7 +106,11 @@ def test_signup_shows_error_when_email_taken(
 
     response = client.post("/accounts/signup/", signup_payload)
 
-    assertContains(response, "An account with this email already exists.")
+    assertContains(
+        response,
+        "An account with this email already exists.",
+        status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+    )
     assert response.context["form"].has_error("email", "unique")
     assert User.objects.count() == 1
 
@@ -123,7 +127,7 @@ def test_signup_shows_error_when_parallel_signup_wins(
 
     response = client.post("/accounts/signup/", signup_payload)
 
-    assert response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.context["form"].has_error("email", "unique")
 
 
@@ -135,7 +139,7 @@ def test_signup_shows_errors_when_form_invalid(
 
     response = client.post("/accounts/signup/", signup_payload)
 
-    assert response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.context["form"].has_error("password2", "password_mismatch")
     assert not User.objects.exists()
 
@@ -148,7 +152,7 @@ def test_signup_shows_error_when_email_too_long(
 
     response = client.post("/accounts/signup/", signup_payload)
 
-    assert response.status_code == HTTPStatus.OK
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.context["form"].has_error("email", "max_length")
 
 

@@ -53,10 +53,10 @@ class AccountSettingsView(TemplateView):
         if not form.has_error("current_password", "password_incorrect"):
             changes.clear_attempt(attempt)
         if not form.is_valid():
-            return self._render_row("email", form)
+            return self._render_row("email", form, HTTPStatus.UNPROCESSABLE_ENTITY)
         if not changes.request_change(request.user, form.cleaned_data["email"]):
             messages.error(request, "Too many email change requests. Try again later.")
-            return self._render_row("email", form, status=HTTPStatus.TOO_MANY_REQUESTS)
+            return self._render_row("email", form, HTTPStatus.TOO_MANY_REQUESTS)
         messages.success(
             request,
             f"We sent a link to {form.cleaned_data['email']}. Open it to finish the change.",
@@ -72,7 +72,7 @@ class AccountSettingsView(TemplateView):
         if not form.has_error("old_password", "password_incorrect"):
             changes.clear_attempt(attempt)
         if not form.is_valid():
-            return self._render_row("password", form)
+            return self._render_row("password", form, HTTPStatus.UNPROCESSABLE_ENTITY)
         form.save()
         # Keeps this session; other sessions fail Django's session hash check and log out.
         update_session_auth_hash(request, form.user)
@@ -80,9 +80,7 @@ class AccountSettingsView(TemplateView):
         messages.success(request, "Your password is changed.")
         return redirect(self.url_name)
 
-    def _render_row(
-        self, row: str, form: forms.Form, status: HTTPStatus = HTTPStatus.OK
-    ) -> HttpResponse:
+    def _render_row(self, row: str, form: forms.Form, status: HTTPStatus) -> HttpResponse:
         context = self.get_context_data()
         context["forms"][row] = form
         context["open_row"] = row

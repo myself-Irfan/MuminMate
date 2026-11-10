@@ -1,4 +1,3 @@
-from http import HTTPStatus
 from typing import Any
 from uuid import UUID
 
@@ -16,6 +15,7 @@ from chats.services.thread_service import ThreadService
 from chats.sidebar import get_sidebar
 from chats.views.chat_views import ChatHomeView, ThreadDetailView
 from chats.views.mixins import OwnedThreadMixin
+from core.mixins import UnprocessableFormMixin
 
 
 class ThreadCreateView(View):
@@ -60,7 +60,9 @@ class ThreadRowView(OwnedThreadMixin, View):
         )
 
 
-class ThreadRenameView(OwnedThreadMixin, UpdateView[Thread, ThreadRenameForm]):
+class ThreadRenameView(
+    OwnedThreadMixin, UnprocessableFormMixin[ThreadRenameForm], UpdateView[Thread, ThreadRenameForm]
+):
     request: HtmxHttpRequest
     form_class = ThreadRenameForm
     url_name = "thread_rename"
@@ -73,11 +75,6 @@ class ThreadRenameView(OwnedThreadMixin, UpdateView[Thread, ThreadRenameForm]):
     # Each row's form gets its own ids: the sidebar is on the page twice (aside and drawer).
     def get_form_kwargs(self) -> dict[str, Any]:
         return {**super().get_form_kwargs(), "auto_id": f"rename-{self.object.public_id}-%s"}
-
-    def form_invalid(self, form: ThreadRenameForm) -> HttpResponse:
-        return self.render_to_response(
-            self.get_context_data(form=form), status=HTTPStatus.UNPROCESSABLE_ENTITY
-        )
 
     def form_valid(self, form: ThreadRenameForm) -> HttpResponse:
         public_id = self.object.public_id
