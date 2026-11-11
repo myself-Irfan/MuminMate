@@ -257,4 +257,6 @@ LOGGING = build_logging(env.django_logging)
 configure_structlog()
 # Its ipware trusts X-Forwarded-For; core.signals binds get_client_ip() instead.
 DJANGO_STRUCTLOG_IP_LOGGING_ENABLED = False
+# RequestIDMiddleware has already validated or replaced it.
+DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True
 DJANGO_STRUCTLOG_CELERY_ENABLED = True

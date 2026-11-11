@@ -19,7 +19,7 @@ class RequestIDMiddleware:
         if not self.valid_id.fullmatch(request_id):
             request_id = str(uuid.uuid4())
         request.META[self.meta_key] = request_id
-        # One ID per request: django-structlog would log a client's correlation ID unchecked.
+        # One ID per request: a client's correlation ID is never logged or stored.
         request.META.pop("HTTP_X_CORRELATION_ID", None)
 
         response = self.get_response(request)
