@@ -98,7 +98,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       rabbitmq:
-        image: rabbitmq:4.3.6-management@sha256:8d0592c8f13b9ca76d844aa269f54461503223f36d0bf955859608d78baaf8fb
+        image: rabbitmq:4.4.0-management@sha256:af6f50d38098d8bd52fef7f3fa85015dd8b2bf6def58e995bf584ae9ba0f6407
         env:
           RABBITMQ_DEFAULT_USER: muminmate
           RABBITMQ_DEFAULT_PASS: ci-only-not-a-secret
