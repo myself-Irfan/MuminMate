@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from http import HTTPStatus
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
@@ -100,6 +101,29 @@ def test_request_event_masks_form_body(rf: RequestFactory, masked: str) -> None:
     event = IncomingEventBuilder().build_request_event(request)
 
     assert event["data"]["body"] == {"email": ["a@example.com"], "password": [masked]}
+
+
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("/chats/new/", "content"),
+        (f"/chats/{uuid4()}/messages/", "content"),
+        (f"/chats/{uuid4()}/rename/", "title"),
+    ],
+    ids=["thread_create", "message_create", "thread_rename"],
+)
+def test_request_event_keeps_only_type_and_size_of_chat_text(
+    rf: RequestFactory, path: str, field: str
+) -> None:
+    request = rf.post(path, f"{field}=Exam+stress", "application/x-www-form-urlencoded")
+
+    event = IncomingEventBuilder().build_request_event(request)
+
+    assert event["data"]["body"] == {
+        "content_type": "application/x-www-form-urlencoded",
+        "size": len(f"{field}=Exam+stress"),
+    }
+    assert "Exam" not in json.dumps(event)
 
 
 # A broken login body would otherwise store the password as sent.

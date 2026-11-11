@@ -133,6 +133,7 @@ DATABASES = {
 DATABASE_ROUTERS = ["config.db_router.LogRouter"]
 AUDIT_RETENTION_DAYS = env.django_audit_retention_days
 THREAD_LIST_PAGE_SIZE = env.django_thread_list_page_size
+MESSAGE_MAX_LENGTH = env.django_message_max_length
 
 CELERY_BROKER_URL = env.rabbitmq_url
 CELERY_TASK_DEFAULT_QUEUE = "default"

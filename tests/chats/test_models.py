@@ -3,7 +3,8 @@ from django.core.exceptions import ValidationError
 from django.db import DataError, IntegrityError
 from django.utils import timezone
 
-from chats.models import Thread
+from chats.enums import MessageRole
+from chats.models import Message, Thread
 from users.models import User
 
 
@@ -82,3 +83,32 @@ def test_deleting_user_deletes_their_threads(consumer_user: User) -> None:
     consumer_user.delete()
 
     assert not Thread.objects.exists()
+
+
+def test_message_str_names_role_not_content(thread: Thread) -> None:
+    message = Message.objects.create(thread=thread, role=MessageRole.USER, content="Private")
+
+    assert str(message) == f"User message {message.pk}"
+
+
+def test_message_save_fails_when_role_unknown(thread: Thread) -> None:
+    message = Message(thread=thread, role="system", content="Hi")
+
+    with pytest.raises(IntegrityError, match="messages_role_valid"):
+        message.save()
+
+
+@pytest.mark.parametrize("content", ["", " \n "])
+def test_message_save_fails_when_content_blank(thread: Thread, content: str) -> None:
+    message = Message(thread=thread, role=MessageRole.USER, content=content)
+
+    with pytest.raises(IntegrityError, match="messages_content_not_blank"):
+        message.save()
+
+
+def test_deleting_thread_deletes_its_messages(thread: Thread) -> None:
+    Message.objects.create(thread=thread, role=MessageRole.USER, content="Hi")
+
+    thread.delete()
+
+    assert not Message.objects.exists()

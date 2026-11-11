@@ -1,0 +1,1 @@
+<li class="message message-{{ message.role }}">{% if message.role == "assistant" %}{% include "partials/logo.html" %}{% endif %}<div class="message-text"><span class="visually-hidden">{% if message.role == "user" %}You{% else %}MuminMate{% endif %}: </span>{{ message.content|linebreaksbr }}</div></li>

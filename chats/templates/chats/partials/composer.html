@@ -1,0 +1,15 @@
+{% if thread %}
+  <form class="composer" method="post" action="{% url 'message_create' thread.public_id %}" hx-post="{% url 'message_create' thread.public_id %}" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button">
+{% else %}
+  <form class="composer" method="post" action="{% url 'thread_create' %}">
+{% endif %}
+  {% csrf_token %}
+  {{ form }}
+  <button type="submit">Send</button>
+  <p class="composer-count" data-count hidden></p>
+</form>
+{% if new_messages %}
+  <div hx-swap-oob="beforeend:#chat-messages">
+    {% for message in new_messages %}{% include "chats/partials/message.html" %}{% endfor %}
+  </div>
+{% endif %}

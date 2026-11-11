@@ -1,12 +1,9 @@
 <div class="sidebar-inner">
   <a class="brand" href="{% url 'home' %}">{% include "partials/logo.html" %} MuminMate</a>
-  <form method="post" action="{% url 'thread_create' %}">
-    {% csrf_token %}
-    <button type="submit" class="new-chat">New chat</button>
-  </form>
+  <a class="new-chat" href="{% url 'home' %}">New chat</a>
   <nav class="thread-nav" aria-label="Your chats">
     <p class="sidebar-label">Your chats</p>
-    <ul class="thread-list">
+    <ul class="thread-list" hx-get="{% url 'thread_list' %}" hx-trigger="threads-changed from:body" hx-swap="innerHTML">
       {% include "chats/partials/thread_rows.html" %}
     </ul>
     <p class="sidebar-empty">

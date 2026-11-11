@@ -48,6 +48,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES` | Email change links expire after this long (`1440`); a change also applies to links already sent |
 | `DJANGO_AUDIT_RETENTION_DAYS` | `deleteexpiredauditevents` deletes request audit rows older than this (`90`) |
 | `DJANGO_THREAD_LIST_PAGE_SIZE` | Chats the sidebar lists before "Show more" (`15`); 1 to 50 |
+| `DJANGO_MESSAGE_MAX_LENGTH` | Characters allowed in one chat message (`4000`); 1 to 20000 |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
 | `DJANGO_THROTTLE_LIMITS` | Login, password reset, signup, verification email, current password and email change limits as one-line JSON (see Throttling below) |
 | `DJANGO_EMAIL` | Mail server as one-line JSON (see Email below) |
@@ -242,38 +243,50 @@ The new email counts as confirmed (the link proved the inbox). The old address t
 naming the new one, with `support_email` as its Reply-To: someone who took over the account can
 change the email, so the owner's way back is a person.
 
-## Threads
+## Threads and messages
 
-A user's conversations are threads (`chats` app, table `threads`). A thread starts as "New chat"
-(a title can't be blank, up to 200 characters, any script). URLs carry its random `public_id`
-(UUID4), never the sequential id. Every lookup is by owner: another user's thread is a 404, exactly
-like one that doesn't exist. Deleting hides a thread (`is_active`) and keeps the row; deleting the
-account removes its threads for good.
+A user's conversations are threads (`chats` app, table `threads`), each with its messages (table
+`messages`: role `user` or `assistant`, the text, the time). The first message creates the chat and
+its title: the message with its whitespace collapsed, cut on a word at 60 characters with "…". A
+title can't be blank, up to 200 characters, any script; renaming keeps the new title. URLs carry the
+thread's random `public_id` (UUID4), never the sequential id. Every lookup is by owner: another
+user's thread is a 404, exactly like one that doesn't exist. Deleting hides a thread (`is_active`) and
+keeps the row; deleting the account removes its threads and messages for good.
 
-Every logged-in page except Welcome has the chats sidebar (`templates/app_base.html`): New chat, your
-chats newest first, and the account menu (Account, which opens Profile, and Log out; the Profile |
-Settings tabs switch between the two). It lists `DJANGO_THREAD_LIST_PAGE_SIZE` chats; "Show more"
-loads the next ones after the last shown. On a phone
-the sidebar opens as a drawer from the menu button. Each chat's menu renames it in place or deletes
-it after a confirmation; deleting the open chat goes home. Messages come next: a chat page says "No
-messages yet."
+A message is at most `DJANGO_MESSAGE_MAX_LENGTH` characters and can't be blank; too long or blank
+returns 422 with the box keeping the text and the error. For now the reply is an echo ("You said:
+…"); the AI comes in phase 3. Your message is saved first, in its own transaction; the reply is made
+and saved separately, so the AI's wait will never hold a transaction open (in phase 3 a background
+task makes it).
+
+Every logged-in page except Welcome has the chats sidebar (`templates/app_base.html`): New chat (back
+to the empty box on Home), your chats with the latest message first, and the account menu (Account,
+which opens Profile, and Log out; the Profile | Settings tabs switch between the two). The order is
+computed, not stored: each chat's highest message id (ids only grow, unlike several servers' clocks).
+It lists `DJANGO_THREAD_LIST_PAGE_SIZE` chats; "Show more" loads the next ones after the last shown.
+On a phone the sidebar opens as a drawer from the menu button. Each chat's menu renames it in place or
+deletes it after a confirmation; deleting the open chat goes home. Sending, renaming and deleting
+fire an htmx `threads-changed` event, and both sidebar copies (column and drawer) reload their list.
 
 | Method | Path | |
 |---|---|---|
-| GET | `/` | Home: greeting and New chat |
-| POST | `/chats/new/` | Create a chat and open it |
+| GET | `/` | Home: greeting and the message box |
+| POST | `/chats/new/` | Send the first message: creates the chat, replies, opens it |
+| GET | `/chats/page/` | The first sidebar rows (htmx; reloaded on `threads-changed`) |
 | GET | `/chats/page/?after=<id>` | The next sidebar rows (htmx; without htmx, home with that page) |
-| GET | `/chats/<id>/` | A chat |
+| GET | `/chats/<id>/` | A chat: its messages and the box |
+| POST | `/chats/<id>/messages/` | Send a message (htmx: adds it and the reply; without htmx, back to the chat) |
 | GET | `/chats/<id>/row/` | One sidebar row (htmx: cancel a rename) |
 | GET, POST | `/chats/<id>/rename/` | Rename form and save; a blank title returns 422 with the form |
 | GET, POST | `/chats/<id>/delete/` | Confirm page and delete |
 
 The pages work without JavaScript; with it, [htmx](https://htmx.org) 2 (bundled by `django-htmx`,
-self-hosted) swaps just the row, and `static/js/` adds what HTML can't do yet: menus close on an
+self-hosted) swaps just what changed, and `static/js/` adds what HTML can't do yet: menus close on an
 outside click or Esc (`menus.js`), dialogs for browsers without Invoker Commands and the delete
-confirmation (`dialogs.js`), and a "Something went wrong. Try again." banner when a request fails
-(`htmx_errors.js`). htmx runs with `allowEval: false` and its inline indicator styles off, so the
-strict CSP stays as is.
+confirmation (`dialogs.js`), a "Something went wrong. Try again." banner when a request fails
+(`htmx_errors.js`), and the message box (`composer.js`: Enter sends, Shift+Enter or a phone's Enter
+adds a line, the box grows, Send waits for text and can't send twice, a count shows near the limit).
+htmx runs with `allowEval: false` and its inline indicator styles off, so the strict CSP stays as is.
 
 ## Sessions
 
@@ -483,7 +496,8 @@ client `ip` in `additional_info`. A request that never finished has only its REQ
 
 - **Masking:** as in the logs: secret keys, query parameters and URL tokens (also inside the
   `Referer` and `Location` headers) become `***`. Cookies a response sets aren't stored at all.
-- **Bodies:** JSON and form data masked; anything else (files, binary, HTML pages, text that isn't
+- **Bodies:** JSON and form data masked, except chat text (new chat, send, rename), kept as
+  `{content_type, size}`; anything else (files, binary, HTML pages, text that isn't
   JSON Postgres can store, such as `NaN`) as `{content_type, size}`, since it can't be masked; anything over 64 KB (or over
   Django's upload limit) as `{content_type, size, truncated: true}`; a streamed response as
   `{content_type}`.
@@ -643,7 +657,7 @@ config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking,
            created/updated timestamp base models, the 422 mixin for invalid page forms
 audit/     request audit: middleware, row building, the audit task and its own database
-chats/     conversation threads, owner-only: home, the sidebar and the chat pages
+chats/     conversations, owner-only: threads and messages, home, the sidebar and the chat pages
 users/     custom user model (email login, no username), manager, admin, signup, email verification,
            invites, password reset, login/logout, profile, settings (email and password change),
            session timeouts, throttling, auth event logging

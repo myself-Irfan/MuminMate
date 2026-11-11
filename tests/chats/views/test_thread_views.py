@@ -1,3 +1,4 @@
+import json
 from http import HTTPStatus
 from unittest.mock import Mock
 
@@ -11,7 +12,9 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from chats.models import Thread
+from chats.enums import MessageRole
+from chats.models import Message, Thread
+from chats.services.message_service import MessageService
 from users.models import User
 
 
@@ -25,11 +28,44 @@ def htmx_on_thread_headers(thread: Thread) -> dict[str, str]:
     return {"HX-Request": "true", "HX-Current-URL": f"http://testserver/chats/{thread.public_id}/"}
 
 
-def test_create_saves_thread_and_opens_it(consumer_client: Client, consumer_user: User) -> None:
-    response = consumer_client.post("/chats/new/")
+def test_create_starts_chat_with_message_and_reply_then_opens_it(
+    consumer_client: Client, consumer_user: User
+) -> None:
+    response = consumer_client.post("/chats/new/", {"content": "  Exam stress tonight  "})
 
     thread = Thread.objects.get(user=consumer_user)
     assertRedirects(response, f"/chats/{thread.public_id}/", fetch_redirect_response=False)
+    assert thread.title == "Exam stress tonight"
+    assert list(thread.messages.order_by("id").values_list("role", "content")) == [
+        (MessageRole.USER, "Exam stress tonight"),
+        (MessageRole.ASSISTANT, "You said: Exam stress tonight"),
+    ]
+
+
+def test_create_saves_line_breaks_as_newlines(consumer_client: Client) -> None:
+    consumer_client.post("/chats/new/", {"content": "Line one\r\nLine two"})
+
+    assert Message.objects.get(role=MessageRole.USER).content == "Line one\nLine two"
+
+
+@pytest.mark.parametrize("content", ["", "   "], ids=["empty", "spaces"])
+def test_create_blank_returns_422_home_and_saves_nothing(
+    consumer_client: Client, content: str
+) -> None:
+    response = consumer_client.post("/chats/new/", {"content": content})
+
+    assertTemplateUsed(response, "chats/home.html")
+    assertContains(response, "Write a message.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
+    assert not Thread.objects.exists()
+
+
+@pytest.mark.usefixtures("message_max_length_five")
+def test_create_too_long_returns_422_and_keeps_text(consumer_client: Client) -> None:
+    response = consumer_client.post("/chats/new/", {"content": "123456"})
+
+    assertContains(response, "at most 5 characters", status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
+    assertContains(response, ">\n123456</textarea>", status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
+    assert not Thread.objects.exists()
 
 
 def test_create_refuses_get(consumer_client: Client) -> None:
@@ -43,8 +79,7 @@ def test_create_refuses_get(consumer_client: Client) -> None:
 def test_list_returns_next_rows_for_htmx(
     consumer_client: Client, consumer_user: User, htmx_headers: dict[str, str]
 ) -> None:
-    first = Thread.objects.create(user=consumer_user, title="Oldest")
-    second = Thread.objects.create(user=consumer_user, title="Middle")
+    first, second = (MessageService().start(consumer_user, text) for text in ("Oldest", "Middle"))
 
     response = consumer_client.get(f"/chats/page/?after={second.public_id}", headers=htmx_headers)
 
@@ -61,13 +96,35 @@ def test_list_marks_open_thread_on_later_page(
     thread: Thread,
     htmx_on_thread_headers: dict[str, str],
 ) -> None:
-    second = Thread.objects.create(user=consumer_user)
+    Message.objects.create(thread=thread, role=MessageRole.USER, content="Hi")
+    second = MessageService().start(consumer_user, "Hi again")
 
     response = consumer_client.get(
         f"/chats/page/?after={second.public_id}", headers=htmx_on_thread_headers
     )
 
     assertContains(response, f'href="/chats/{thread.public_id}/" aria-current="page"')
+
+
+@pytest.mark.usefixtures("page_size_two")
+def test_list_without_after_returns_first_page_for_htmx(
+    consumer_client: Client, consumer_user: User, htmx_headers: dict[str, str]
+) -> None:
+    for text in ("Oldest", "Middle", "Newest"):
+        MessageService().start(consumer_user, text)
+
+    response = consumer_client.get("/chats/page/", headers=htmx_headers)
+
+    assertContains(response, "Newest")
+    assertContains(response, "Middle")
+    assertNotContains(response, "Oldest")
+    assertContains(response, "Show more")
+
+
+def test_list_without_after_redirects_home_without_htmx(consumer_client: Client) -> None:
+    response = consumer_client.get("/chats/page/")
+
+    assertRedirects(response, "/", fetch_redirect_response=False)
 
 
 def test_list_redirects_to_home_page_without_htmx(consumer_client: Client, thread: Thread) -> None:
@@ -175,6 +232,7 @@ def test_rename_saves_stripped_title_and_returns_row(
     assert thread.title == "Sleep"
     assertTemplateUsed(response, "chats/partials/thread_row.html")
     assertContains(response, ">Sleep</a>")
+    assert json.loads(response["HX-Trigger"]) == {"threads-changed": {}}
 
 
 def test_rename_of_open_thread_refreshes_page(
@@ -261,6 +319,7 @@ def test_delete_hides_thread_and_returns_empty_row(
     assert response.status_code == HTTPStatus.OK
     assert response.content == b""
     assert not thread.is_active
+    assert json.loads(response["HX-Trigger"]) == {"threads-changed": {}}
 
 
 def test_delete_of_open_thread_sends_browser_home(

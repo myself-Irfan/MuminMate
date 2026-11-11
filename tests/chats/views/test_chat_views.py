@@ -10,7 +10,9 @@ from pytest_django.asserts import (
     assertTemplateUsed,
 )
 
-from chats.models import Thread
+from chats.enums import MessageRole
+from chats.models import Message, Thread
+from chats.services.message_service import MessageService
 from users.models import Profile, User
 
 
@@ -40,6 +42,7 @@ def test_home_loads_stylesheets_htmx_and_scripts(consumer_client: Client) -> Non
         "/static/js/menus.js",
         "/static/js/dialogs.js",
         "/static/js/htmx_errors.js",
+        "/static/js/composer.js",
     ):
         assertContains(response, path)
 
@@ -88,10 +91,25 @@ def test_home_offers_new_or_existing_chat_when_some(consumer_client: Client) -> 
     assertContains(response, "Start a new chat, or pick one from your chats.")
 
 
-def test_home_new_chat_button_posts_to_create(consumer_client: Client) -> None:
+def test_home_message_box_posts_to_create(consumer_client: Client) -> None:
     response = consumer_client.get("/")
 
     assertContains(response, 'action="/chats/new/"')
+    assertContains(response, 'name="content"')
+    assertContains(response, 'maxlength="4000"')
+
+
+def test_sidebar_new_chat_is_a_link_home(consumer_client: Client) -> None:
+    response = consumer_client.get("/")
+
+    assertContains(response, '<a class="new-chat" href="/">New chat</a>', count=2, html=True)
+
+
+def test_sidebar_lists_reload_when_threads_change(consumer_client: Client) -> None:
+    response = consumer_client.get("/")
+
+    assertContains(response, 'hx-trigger="threads-changed from:body"', count=2)
+    assertContains(response, 'hx-get="/chats/page/"', count=2)
 
 
 @pytest.mark.usefixtures("other_thread")
@@ -118,9 +136,7 @@ def test_sidebar_has_account_menu(consumer_client: Client, consumer_user: User) 
 def test_sidebar_shows_more_link_when_more_threads_than_page(
     consumer_client: Client, consumer_user: User
 ) -> None:
-    Thread.objects.create(user=consumer_user)
-    second = Thread.objects.create(user=consumer_user)
-    Thread.objects.create(user=consumer_user)
+    _, second, _ = (MessageService().start(consumer_user, text) for text in "ABC")
 
     response = consumer_client.get("/")
 
@@ -144,9 +160,9 @@ def test_sidebar_has_no_more_link_when_threads_fit_page(
 def test_sidebar_after_param_lists_older_threads(
     consumer_client: Client, consumer_user: User
 ) -> None:
-    first = Thread.objects.create(user=consumer_user, title="Oldest")
-    second = Thread.objects.create(user=consumer_user, title="Middle")
-    Thread.objects.create(user=consumer_user, title="Newest")
+    first, second, _ = (
+        MessageService().start(consumer_user, text) for text in ("Oldest", "Middle", "Newest")
+    )
 
     response = consumer_client.get(f"/?after={second.public_id}")
 
@@ -161,13 +177,32 @@ def test_sidebar_ignores_invalid_after_param(consumer_client: Client) -> None:
     assertContains(response, "Exam stress")
 
 
-def test_detail_shows_title_and_empty_note(consumer_client: Client, thread: Thread) -> None:
+def test_detail_shows_title(consumer_client: Client, thread: Thread) -> None:
     response = consumer_client.get(f"/chats/{thread.public_id}/")
 
     assertTemplateUsed(response, "chats/thread_detail.html")
     assertContains(response, "<h1>Exam stress</h1>", html=True)
-    assertContains(response, "No messages yet.")
     assertContains(response, "<title>Exam stress - MuminMate</title>", html=True)
+
+
+def test_detail_shows_messages_in_order_with_roles(consumer_client: Client, thread: Thread) -> None:
+    Message.objects.create(thread=thread, role=MessageRole.USER, content="First <b>")
+    Message.objects.create(thread=thread, role=MessageRole.ASSISTANT, content="You said: First")
+
+    response = consumer_client.get(f"/chats/{thread.public_id}/")
+
+    content = response.content.decode()
+    assert content.index("First &lt;b&gt;") < content.index("You said: First")
+    assertContains(response, 'class="message message-user"')
+    assertContains(response, 'class="message message-assistant"')
+
+
+def test_detail_message_box_posts_to_send(consumer_client: Client, thread: Thread) -> None:
+    response = consumer_client.get(f"/chats/{thread.public_id}/")
+
+    assertContains(response, f'hx-post="/chats/{thread.public_id}/messages/"')
+    assertContains(response, 'hx-disabled-elt="find button"')
+    assertContains(response, f'action="/chats/{thread.public_id}/messages/"')
 
 
 def test_detail_marks_open_thread_in_sidebar(consumer_client: Client, thread: Thread) -> None:

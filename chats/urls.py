@@ -1,6 +1,7 @@
 from django.urls import path
 
 from chats.views.chat_views import ChatHomeView, ThreadDetailView
+from chats.views.message_views import MessageCreateView
 from chats.views.thread_views import (
     ThreadCreateView,
     ThreadDeleteView,
@@ -20,5 +21,10 @@ urlpatterns = [
     ),
     path(
         "chats/<uuid:public_id>/delete/", ThreadDeleteView.as_view(), name=ThreadDeleteView.url_name
+    ),
+    path(
+        "chats/<uuid:public_id>/messages/",
+        MessageCreateView.as_view(),
+        name=MessageCreateView.url_name,
     ),
 ]
