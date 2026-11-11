@@ -6,11 +6,16 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views import View
 from django.views.generic import UpdateView
-from django_htmx.http import HttpResponseClientRedirect, HttpResponseClientRefresh
+from django_htmx.http import (
+    HttpResponseClientRedirect,
+    HttpResponseClientRefresh,
+    trigger_client_event,
+)
 
-from chats.forms import ThreadRenameForm
+from chats.forms import MessageForm, ThreadRenameForm
 from chats.http import HtmxHttpRequest, get_open_thread_id
 from chats.models import Thread
+from chats.services.message_service import MessageService
 from chats.services.thread_service import ThreadService
 from chats.sidebar import get_sidebar
 from chats.views.chat_views import ChatHomeView, ThreadDetailView
@@ -18,12 +23,15 @@ from chats.views.mixins import OwnedThreadMixin
 from core.mixins import UnprocessableFormMixin
 
 
-class ThreadCreateView(View):
-    request: HtmxHttpRequest
+# Home's box posts here; an invalid message re-renders Home with the error.
+class ThreadCreateView(UnprocessableFormMixin[MessageForm], ChatHomeView):
+    http_method_names = ("post",)
     url_name = "thread_create"
 
-    def post(self, request: HtmxHttpRequest) -> HttpResponse:
-        thread = ThreadService().create(request.user)
+    def form_valid(self, form: MessageForm) -> HttpResponse:
+        conversation = MessageService()
+        thread = conversation.start(self.request.user, form.cleaned_data["content"])
+        conversation.reply(thread)
         return redirect(ThreadDetailView.url_name, public_id=thread.public_id)
 
 
@@ -32,12 +40,14 @@ class ThreadListView(View):
     url_name = "thread_list"
 
     def get(self, request: HtmxHttpRequest) -> HttpResponse:
+        # No `after` is the first page: both sidebar copies reload it on threads-changed.
         try:
-            after = UUID(request.GET.get("after", ""))
+            after = UUID(request.GET["after"]) if "after" in request.GET else None
         except ValueError:
             return HttpResponseBadRequest()
         if not request.htmx:
-            return redirect(f"{reverse(ChatHomeView.url_name)}?after={after}")
+            home = reverse(ChatHomeView.url_name)
+            return redirect(f"{home}?after={after}" if after else home)
         return render(
             request,
             "chats/partials/thread_rows.html",
@@ -85,7 +95,10 @@ class ThreadRenameView(
         # The open thread's title is also the page heading and tab title: reload them all.
         if get_open_thread_id(self.request.htmx) == public_id:
             return HttpResponseClientRefresh()
-        return render(self.request, "chats/partials/thread_row.html", {"thread": form.instance})
+        return trigger_client_event(
+            render(self.request, "chats/partials/thread_row.html", {"thread": form.instance}),
+            "threads-changed",
+        )
 
 
 class ThreadDeleteView(OwnedThreadMixin, View):
@@ -102,5 +115,5 @@ class ThreadDeleteView(OwnedThreadMixin, View):
             return redirect(ChatHomeView.url_name)
         if get_open_thread_id(request.htmx) == public_id:
             return HttpResponseClientRedirect(reverse(ChatHomeView.url_name))
-        # An empty body swapped over the row removes it.
-        return HttpResponse()
+        # An empty body swapped over the row removes it; the other sidebar copy reloads.
+        return trigger_client_event(HttpResponse(), "threads-changed")

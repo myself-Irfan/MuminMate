@@ -8,9 +8,6 @@
     <h1 class="greeting-latin">Assalamu Alaikum{% if user.profile.display_name %}, {{ user.profile.display_name }}{% endif %}</h1>
     {% include "partials/divider.html" %}
     <p class="note">{% if has_threads %}Start a new chat, or pick one from your chats.{% else %}Start your first chat.{% endif %}</p>
-    <form method="post" action="{% url 'thread_create' %}">
-      {% csrf_token %}
-      <button type="submit">New chat</button>
-    </form>
+    {% include "chats/partials/composer.html" %}
   </section>
 {% endblock %}

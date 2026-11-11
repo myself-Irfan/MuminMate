@@ -1,16 +1,21 @@
+from collections.abc import Sequence
 from typing import Any
 
-from django.views.generic import DetailView, TemplateView
+from django.views.generic import DetailView, FormView
 
+from chats.forms import MessageForm
 from chats.http import HtmxHttpRequest
 from chats.models import Thread
+from chats.services.message_service import MessageService
 from chats.services.thread_service import ThreadService
 from chats.views.mixins import OwnedThreadMixin
 
 
-class ChatHomeView(TemplateView):
+class ChatHomeView(FormView[MessageForm]):
     request: HtmxHttpRequest
+    form_class = MessageForm
     template_name = "chats/home.html"
+    http_method_names: Sequence[str] = ("get", "head", "options")
     url_name = "home"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
@@ -23,3 +28,8 @@ class ThreadDetailView(OwnedThreadMixin, DetailView[Thread]):
     request: HtmxHttpRequest
     template_name = "chats/thread_detail.html"
     url_name = "thread_detail"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        return super().get_context_data(
+            chat_messages=MessageService().get_messages(self.object), form=MessageForm(), **kwargs
+        )

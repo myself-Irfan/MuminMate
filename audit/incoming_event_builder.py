@@ -24,14 +24,17 @@ class IncomingEventBuilder:
     masker = DataMasker()
     traceback_transformer = ExceptionDictTransformer(show_locals=False)
     url_headers = frozenset({"referer", "location"})
+    # Chat text is GDPR Art. 9 data and already in the messages table: keep only type and size.
+    private_body_url_names = frozenset({"thread_create", "message_create", "thread_rename"})
 
     def build_request_event(self, request: HttpRequest) -> dict[str, Any]:
+        fields = self._get_request_fields(request, EventType.REQUEST)
         return self._event_without_nul(
             {
-                **self._get_request_fields(request, EventType.REQUEST),
+                **fields,
                 "data": self._get_data(
                     params=self.masker.mask(dict(request.GET.lists())),
-                    body=self._get_request_body(request),
+                    body=self._get_request_body(request, fields["url_name"]),
                 ),
                 "headers": self._get_masked_headers(request.headers),
             }
@@ -101,13 +104,15 @@ class IncomingEventBuilder:
         token = find_url_token(path)
         return url.replace(token, self.masker.replacement) if token else url
 
-    def _get_request_body(self, request: HttpRequest) -> Any:
+    def _get_request_body(self, request: HttpRequest, url_name: str) -> Any:
         content_type = request.content_type or ""
         try:
             body = request.body
         except RequestDataTooBig:
             size = int(request.META.get("CONTENT_LENGTH") or 0)
             return self._describe_truncated_body(content_type, size)
+        if body and url_name in self.private_body_url_names:
+            return self._describe_body(content_type, len(body))
         return self._get_body(body, content_type)
 
     def _get_body(self, body: bytes, content_type: str) -> Any:

@@ -4,15 +4,14 @@ from django.test import RequestFactory
 from django.urls import resolve
 
 from chats.models import Thread
+from chats.services.message_service import MessageService
 from chats.templatetags.sidebar import sidebar
 from users.models import User
 
 
 @pytest.mark.usefixtures("page_size_two")
 def test_sidebar_tag_pages_after_valid_cursor(rf: RequestFactory, consumer_user: User) -> None:
-    oldest, middle, _ = (
-        Thread.objects.create(user=consumer_user, title=title) for title in ("A", "B", "C")
-    )
+    oldest, middle, _ = (MessageService().start(consumer_user, text) for text in ("A", "B", "C"))
     request = rf.get("/", {"after": str(middle.public_id)})
     request.user = consumer_user
 

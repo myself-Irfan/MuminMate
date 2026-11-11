@@ -69,6 +69,8 @@ class Env(BaseSettings):
     django_audit_retention_days: PositiveInt
     # Capped: the sidebar renders on every page, so a typo must not bring back an unbounded list.
     django_thread_list_page_size: Annotated[int, Field(ge=1, le=50)]
+    # Capped: every message is sent to the AI in phase 3; a typo must not let a book through.
+    django_message_max_length: Annotated[int, Field(ge=1, le=20000)]
     django_logging: LogSettings
     django_throttle_limits: ThrottleLimits
     django_email: EmailSettings

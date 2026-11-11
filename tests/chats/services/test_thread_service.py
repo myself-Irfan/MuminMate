@@ -4,36 +4,37 @@ import pytest
 from django.db import IntegrityError
 from pytest_django import DjangoAssertNumQueries
 
-from chats.models import Thread
+from chats.enums import MessageRole
+from chats.models import Message, Thread
 from chats.services.thread_service import ThreadService
 from users.models import User
 
 
+def add_message(thread: Thread) -> None:
+    Message.objects.create(thread=thread, role=MessageRole.USER, content="Hi")
+
+
 def test_create_saves_new_thread_for_user(consumer_user: User) -> None:
-    thread = ThreadService().create(consumer_user)
+    thread = ThreadService().create(consumer_user, "Exam stress")
 
     assert Thread.objects.get() == thread
-    assert (thread.user, thread.title, thread.is_active) == (consumer_user, "New chat", True)
+    assert (thread.user, thread.title, thread.is_active) == (consumer_user, "Exam stress", True)
 
 
-def test_get_threads_returns_newest_first(consumer_user: User) -> None:
+def test_get_threads_returns_latest_message_first(consumer_user: User) -> None:
     first = Thread.objects.create(user=consumer_user)
     second = Thread.objects.create(user=consumer_user)
+    add_message(second)
+    add_message(first)
 
-    assert ThreadService().get_threads(consumer_user, limit=10) == [second, first]
-
-
-def test_get_threads_orders_same_created_at_by_newest_id(consumer_user: User) -> None:
-    first = Thread.objects.create(user=consumer_user)
-    second = Thread.objects.create(user=consumer_user)
-    Thread.objects.update(created_at=first.created_at)
-
-    assert ThreadService().get_threads(consumer_user, limit=10) == [second, first]
+    assert ThreadService().get_threads(consumer_user, limit=10) == [first, second]
 
 
 def test_get_threads_returns_at_most_limit(consumer_user: User) -> None:
-    Thread.objects.create(user=consumer_user)
+    first = Thread.objects.create(user=consumer_user)
     second = Thread.objects.create(user=consumer_user)
+    add_message(first)
+    add_message(second)
 
     assert ThreadService().get_threads(consumer_user, limit=1) == [second]
 
@@ -49,29 +50,23 @@ def test_get_threads_skips_deleted_threads(consumer_user: User) -> None:
     assert ThreadService().get_threads(consumer_user, limit=10) == []
 
 
-def test_get_threads_after_returns_older_threads(consumer_user: User) -> None:
+def test_get_threads_after_returns_chats_with_older_messages(consumer_user: User) -> None:
     first = Thread.objects.create(user=consumer_user)
     second = Thread.objects.create(user=consumer_user)
     third = Thread.objects.create(user=consumer_user)
+    for thread in (third, first, second):
+        add_message(thread)
 
-    threads = ThreadService().get_threads(consumer_user, limit=10, after=third.public_id)
+    threads = ThreadService().get_threads(consumer_user, limit=10, after=first.public_id)
 
-    assert threads == [second, first]
-
-
-def test_get_threads_after_breaks_created_at_ties_by_id(consumer_user: User) -> None:
-    first = Thread.objects.create(user=consumer_user)
-    second = Thread.objects.create(user=consumer_user)
-    Thread.objects.update(created_at=first.created_at)
-
-    threads = ThreadService().get_threads(consumer_user, limit=10, after=second.public_id)
-
-    assert threads == [first]
+    assert threads == [third]
 
 
 def test_get_threads_after_deleted_thread_continues_from_it(consumer_user: User) -> None:
     first = Thread.objects.create(user=consumer_user)
     second = Thread.objects.create(user=consumer_user, is_active=False)
+    add_message(first)
+    add_message(second)
 
     threads = ThreadService().get_threads(consumer_user, limit=10, after=second.public_id)
 

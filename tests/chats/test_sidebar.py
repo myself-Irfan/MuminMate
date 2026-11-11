@@ -2,16 +2,14 @@ from uuid import uuid4
 
 import pytest
 
-from chats.models import Thread
+from chats.services.message_service import MessageService
 from chats.sidebar import get_sidebar
 from users.models import User
 
 
 @pytest.mark.usefixtures("page_size_two")
 def test_get_sidebar_cuts_page_and_points_more_at_last_shown(consumer_user: User) -> None:
-    _, middle, newest = (
-        Thread.objects.create(user=consumer_user, title=title) for title in ("A", "B", "C")
-    )
+    _, middle, newest = (MessageService().start(consumer_user, text) for text in ("A", "B", "C"))
 
     sidebar = get_sidebar(consumer_user, after=None, open_id=None)
 
@@ -21,7 +19,7 @@ def test_get_sidebar_cuts_page_and_points_more_at_last_shown(consumer_user: User
 
 @pytest.mark.usefixtures("page_size_two")
 def test_get_sidebar_has_no_more_when_threads_fit_page(consumer_user: User) -> None:
-    older, newer = (Thread.objects.create(user=consumer_user, title=title) for title in "AB")
+    older, newer = (MessageService().start(consumer_user, text) for text in "AB")
 
     sidebar = get_sidebar(consumer_user, after=None, open_id=None)
 
@@ -31,9 +29,7 @@ def test_get_sidebar_has_no_more_when_threads_fit_page(consumer_user: User) -> N
 
 @pytest.mark.usefixtures("page_size_two")
 def test_get_sidebar_continues_after_cursor(consumer_user: User) -> None:
-    oldest, middle, _ = (
-        Thread.objects.create(user=consumer_user, title=title) for title in ("A", "B", "C")
-    )
+    oldest, middle, _ = (MessageService().start(consumer_user, text) for text in ("A", "B", "C"))
 
     sidebar = get_sidebar(consumer_user, after=middle.public_id, open_id=None)
 

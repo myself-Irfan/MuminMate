@@ -26,3 +26,8 @@ def other_thread(other_consumer_user: User) -> Thread:
 @pytest.fixture
 def page_size_two(settings: Settings) -> None:
     settings.THREAD_LIST_PAGE_SIZE = 2
+
+
+@pytest.fixture
+def message_max_length_five(settings: Settings) -> None:
+    settings.MESSAGE_MAX_LENGTH = 5

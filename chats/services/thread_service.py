@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from django.db.models import Q, QuerySet, Subquery
+from django.db.models import Max, QuerySet, Subquery
 from django.utils import timezone
 
 from chats.models import Thread
@@ -8,20 +8,18 @@ from users.models import User
 
 
 class ThreadService:
-    def create(self, user: User) -> Thread:
-        return Thread.objects.create(user=user)
+    def create(self, user: User, title: str) -> Thread:
+        return Thread.objects.create(user=user, title=title)
 
-    # Keyset paging: `after` is the last thread shown; a deleted one still marks its place.
+    # Latest message first, computed not stored; `after` is the last thread shown, even if deleted.
     def get_threads(self, user: User, limit: int, after: UUID | None = None) -> list[Thread]:
-        threads = self._live_threads(user)
+        threads = self._live_threads(user).annotate(last_message_id=self._last_message_id())
         if after is not None:
-            cursor = Thread.objects.filter(user=user, public_id=after)
-            created_at = Subquery(cursor.values("created_at"))
-            threads = threads.filter(
-                Q(created_at__lt=created_at)
-                | Q(created_at=created_at, id__lt=Subquery(cursor.values("id")))
+            cursor = Thread.objects.filter(user=user, public_id=after).annotate(
+                last_message_id=self._last_message_id()
             )
-        return list(threads.order_by("-created_at", "-id")[:limit])
+            threads = threads.filter(last_message_id__lt=Subquery(cursor.values("last_message_id")))
+        return list(threads.order_by("-last_message_id")[:limit])
 
     def exists_threads(self, user: User) -> bool:
         return self._live_threads(user).exists()
@@ -49,3 +47,6 @@ class ThreadService:
 
     def _live_threads(self, user: User) -> QuerySet[Thread]:
         return Thread.objects.filter(user=user, is_active=True)
+
+    def _last_message_id(self) -> Max:
+        return Max("messages__id")

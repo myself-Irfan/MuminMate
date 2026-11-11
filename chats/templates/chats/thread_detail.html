@@ -7,6 +7,9 @@
 {% block content %}
   <section class="chat-thread">
     <h1>{{ thread.title }}</h1>
-    <p class="note">No messages yet.</p>
+    <ol id="chat-messages" class="chat-messages" aria-live="polite">
+      {% for message in chat_messages %}{% include "chats/partials/message.html" %}{% endfor %}
+    </ol>
+    {% include "chats/partials/composer.html" %}
   </section>
 {% endblock %}
