@@ -19,6 +19,7 @@ from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from pytest_django import Settings
 
+from audit.enums import EventType
 from tests.logging_support import events
 from users.models import User
 from users.services.email_service import EmailService
@@ -34,6 +35,21 @@ def public_url(settings: Settings) -> str:
     url = "https://muminmate.example"
     settings.PUBLIC_URL = url
     return url
+
+
+@pytest.mark.django_db
+def test_email_is_audited_by_kind_and_recipient_id(
+    unverified_consumer_user: User, outgoing_audit_publish: Mock
+) -> None:
+    EmailService().send_verification_email(unverified_consumer_user.pk)
+
+    [request], [response] = (call.args for call in outgoing_audit_publish.call_args_list)
+    assert (request["type"], request["name"], request["additional_info"]["recipient_id"]) == (
+        EventType.REQUEST,
+        "verify_email",
+        unverified_consumer_user.pk,
+    )
+    assert (response["type"], response["status"]) == (EventType.RESPONSE, 250)
 
 
 def test_verification_email_sends_verify_link(

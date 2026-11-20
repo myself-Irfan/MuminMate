@@ -60,7 +60,9 @@ class IncomingEventBuilder:
             "type": event_type,
             "request_id": request.headers.get(RequestIDMiddleware.header, ""),
             "url_name": self._get_url_name(request),
-            "method": (request.method or "")[: IncomingRequestResponseEvent.max_method_length],
+            "method": (request.method or "")[
+                : IncomingRequestResponseEvent._meta.get_field("method").max_length
+            ],
             "path": self._get_masked_path(request),
             "additional_info": {"ip": get_client_ip(request)},
             "logged_at": timezone.now().isoformat(),

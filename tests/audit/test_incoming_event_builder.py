@@ -13,7 +13,6 @@ from pytest_django import Settings
 
 from audit.enums import EventType
 from audit.incoming_event_builder import IncomingEventBuilder
-from audit.models import IncomingRequestResponseEvent
 from audit.signals import remember_logged_out_user, remember_request_error
 from core.masking import DataMasker
 from users.views.authentication_views import ConsumerLoginView
@@ -65,7 +64,7 @@ def test_request_event_method_cut_to_column_length(rf: RequestFactory) -> None:
 
     event = IncomingEventBuilder().build_request_event(request)
 
-    assert event["method"] == "A" * IncomingRequestResponseEvent.max_method_length
+    assert event["method"] == "A" * 16
 
 
 def test_request_event_masks_query(rf: RequestFactory, masked: str) -> None:

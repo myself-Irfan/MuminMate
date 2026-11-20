@@ -46,7 +46,7 @@ Every variable is required; the app refuses to start if one is missing.
 | `DJANGO_EMAIL_LINK_TIMEOUT_HOURS` | Verification and invite links expire after this long (`72`); a change also applies to links already sent |
 | `DJANGO_PASSWORD_RESET_LINK_TIMEOUT_MINUTES` | Password reset links expire after this long (`60`); shorter than the email link timeout, and a change also applies to links already sent |
 | `DJANGO_EMAIL_CHANGE_LINK_TIMEOUT_MINUTES` | Email change links expire after this long (`1440`); a change also applies to links already sent |
-| `DJANGO_AUDIT_RETENTION_DAYS` | `deleteexpiredauditevents` deletes request audit rows older than this (`90`) |
+| `DJANGO_AUDIT_RETENTION_DAYS` | `deleteexpiredauditevents` deletes audit rows (incoming and outgoing) older than this (`90`) |
 | `DJANGO_THREAD_LIST_PAGE_SIZE` | Chats the sidebar lists before "Show more" (`15`); 1 to 50 |
 | `DJANGO_MESSAGE_MAX_LENGTH` | Characters allowed in one chat message (`4000`); 1 to 20000 |
 | `DJANGO_LOGGING` | Log level and format as one-line JSON: `console` locally, `json` in production (see Logging below) |
@@ -475,7 +475,7 @@ and `ip` unless the worker logged it):
 | `request_limited` | warning | `scope` (`password_reset`, `signup`, `verification_email`, `current_password_failure`, `email_change`); a request refused by its limit (no `user_id`, as most scopes look up no account) |
 | `email_rejected` | error | `user_id`, `error_type`, `smtp_code` (worker: the mail server refused for good, 5xx or no STARTTLS; not retried; no traceback, the server's reply echoes the address) |
 | `verification_email_queue_failed`, `password_reset_email_queue_failed`, `invite_email_queue_failed`, `password_changed_email_queue_failed`, `email_change_link_queue_failed`, `email_changed_notice_queue_failed` | error | `user_id`; the broker couldn't be reached or was blocking publishes, so no mail was queued (traceback attached) |
-| `audit_event_queue_failed` | error | `event_type` (`REQUEST`, `RESPONSE`); the same, for a request audit row (see Request audit) |
+| `audit_event_queue_failed` | error | `event_type` (`REQUEST`, `RESPONSE`); the same, for an incoming or outgoing audit row (see Request audit) |
 
 `email_digest` is the same keyed hash the `throttle_events` table stores, so many failures on one
 address show up even when it has no account; the email itself is never logged. The pages look the
@@ -515,10 +515,20 @@ times. The rows hold personal data (IPs, emails in bodies), so restrict who can 
 ```
 docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$LOG_POSTGRES_DB"'
 select type, method, path, status, duration_ms, user_id from incoming_request_response_events order by id desc limit 10;
+select type, partner, name, status, duration_ms, user_id from outgoing_request_response_events order by id desc limit 10;
 ```
 
-`python manage.py deleteexpiredauditevents` deletes rows older than `DJANGO_AUDIT_RETENTION_DAYS`,
-5,000 at a time; run it daily.
+### Outgoing calls
+
+Every call to another service leaves the same pair in `outgoing_request_response_events` (`partner`,
+`name`, `url`, `status`, `duration_ms`, `error`; `request_id` and `user_id` from the caller). Today
+the only partner is `EMAIL`: `EmailService` sends through `audit.smtp_client.SmtpClient`, which
+records the email's kind, recipient id, size and `Message-ID`, never an address or content (links
+are live tokens), and only the `error_type` on failure. The sending worker queues the rows like the
+web process does; a broker outage drops them, never the email.
+
+`python manage.py deleteexpiredauditevents` deletes rows from both tables older than
+`DJANGO_AUDIT_RETENTION_DAYS`, 5,000 at a time; run it daily.
 
 ## Background jobs
 
@@ -655,8 +665,9 @@ Cormorant Garamond, Arabic uses Amiri (both from Fontsource 5.3.0). Everything i
 ```
 config/    settings, env, URL, API, admin site and Celery wiring
 core/      cross-cutting: health checks, Problem+JSON errors, request ID, log processors and masking,
-           created/updated timestamp base models, the 422 mixin for invalid page forms
-audit/     request audit: middleware, row building, the audit task and its own database
+           created/updated timestamp base models, the 422 mixin for invalid page forms, SMTP codes
+audit/     request audit: incoming middleware, the SMTP client, row building, the audit tasks and
+           its own database
 chats/     conversations, owner-only: threads and messages, home, the sidebar and the chat pages
 users/     custom user model (email login, no username), manager, admin, signup, email verification,
            invites, password reset, login/logout, profile, settings (email and password change),
