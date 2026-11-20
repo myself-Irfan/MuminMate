@@ -163,6 +163,7 @@ CELERY_TASK_ROUTES = {
     },
     "users.tasks.send_email_change_link": {"queue": "email", "routing_key": "email.email_change"},
     "audit.tasks.record_incoming_event": {"queue": "audit", "routing_key": "audit.incoming"},
+    "audit.tasks.record_outgoing_event": {"queue": "audit", "routing_key": "audit.outgoing"},
 }
 # A typo'd queue name fails at publish instead of creating a queue no worker reads.
 CELERY_TASK_CREATE_MISSING_QUEUES = False

@@ -8,9 +8,9 @@ from django.test import RequestFactory
 from django.utils import timezone
 from pytest_django import Settings
 
-from audit.enums import EventType
+from audit.enums import EventType, Partner
 from audit.incoming_event_builder import IncomingEventBuilder
-from audit.models import IncomingRequestResponseEvent
+from audit.models import IncomingRequestResponseEvent, OutgoingRequestResponseEvent
 from audit.services.audit_event_service import AuditEventService
 from audit.signals import remember_request_error
 
@@ -64,6 +64,18 @@ def create_event_logged_days_ago(days: float) -> IncomingRequestResponseEvent:
     )
 
 
+def create_outgoing_event_logged_days_ago(days: float) -> OutgoingRequestResponseEvent:
+    return OutgoingRequestResponseEvent.objects.create(
+        type=EventType.REQUEST,
+        request_id="req-1",
+        partner=Partner.EMAIL,
+        name="password_reset",
+        method="SMTP",
+        url="smtp://mailpit:1025",
+        logged_at=timezone.now() - timedelta(days=days),
+    )
+
+
 @pytest.mark.django_db(databases=["log"])
 def test_delete_expired_keeps_events_within_retention(settings: Settings) -> None:
     settings.AUDIT_RETENTION_DAYS = 90
@@ -89,3 +101,15 @@ def test_delete_expired_deletes_in_batches(
 
     assert deleted == 5
     assert not IncomingRequestResponseEvent.objects.exists()
+
+
+@pytest.mark.django_db(databases=["log"])
+def test_delete_expired_deletes_outgoing_events_too(settings: Settings) -> None:
+    settings.AUDIT_RETENTION_DAYS = 90
+    create_outgoing_event_logged_days_ago(90.01)
+    kept = create_outgoing_event_logged_days_ago(89.99)
+
+    deleted = AuditEventService().delete_expired()
+
+    assert deleted == 1
+    assert list(OutgoingRequestResponseEvent.objects.all()) == [kept]

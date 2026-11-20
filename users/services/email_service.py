@@ -13,6 +13,8 @@ from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
+from audit.smtp_client import SmtpClient
+from core.smtp import get_smtp_code
 from users.models import User
 from users.tokens import (
     ConsumerPasswordResetTokenGenerator,
@@ -25,6 +27,9 @@ logger = structlog.get_logger(__name__)
 
 
 class EmailService:
+    def __init__(self) -> None:
+        self.smtp_client = SmtpClient()
+
     def send_verification_email(self, user_id: int) -> None:
         user = self._get_user(user_id)
         if user is None or not user.is_verification_pending:
@@ -155,7 +160,7 @@ class EmailService:
         )
         mail.attach_alternative(render_to_string(f"{template_name}.html", context), "text/html")
         try:
-            mail.send()
+            self.smtp_client.send(mail, name=template_name.rpartition("/")[2], recipient_id=user.pk)
         except SMTPException as error:
             if not self._is_permanent_refusal(error):
                 raise
@@ -164,7 +169,7 @@ class EmailService:
                 "email_rejected",
                 user_id=user.pk,
                 error_type=type(error).__name__,
-                smtp_code=self._get_smtp_code(error),
+                smtp_code=get_smtp_code(error),
             )
 
     # RFC 5321 §4.2.1: 5yz is permanent, 4yz transient; no STARTTLS is a config error.
@@ -174,10 +179,3 @@ class EmailService:
         if isinstance(error, SMTPRecipientsRefused):
             return all(code >= 500 for code, _ in error.recipients.values())
         return isinstance(error, SMTPResponseException) and error.smtp_code >= 500
-
-    def _get_smtp_code(self, error: SMTPException) -> int | None:
-        if isinstance(error, SMTPRecipientsRefused):
-            return max((code for code, _ in error.recipients.values()), default=None)
-        if isinstance(error, SMTPResponseException):
-            return error.smtp_code
-        return None

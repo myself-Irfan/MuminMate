@@ -10,6 +10,8 @@ from django.test import Client
 from django.utils import timezone
 from pytest_django import Settings
 
+from audit.services.audit_queue_service import AuditQueueService
+from audit.smtp_client import SmtpClient
 from config.env import LogSettings
 from tests.logging_support import route_logs_to_buffer
 from users.models import User
@@ -26,10 +28,24 @@ def plain_static_storage(settings: Settings) -> None:
 
 # Every request is audited: without this, the suite fills the real broker's audit queue.
 @pytest.fixture(autouse=True)
-def audit_publish(monkeypatch: pytest.MonkeyPatch) -> Mock:
+def incoming_audit_publish(monkeypatch: pytest.MonkeyPatch) -> Mock:
     delay = Mock()
     monkeypatch.setattr("audit.services.audit_queue_service.record_incoming_event.delay", delay)
     return delay
+
+
+# Outgoing calls are audited too: same reason.
+@pytest.fixture(autouse=True)
+def outgoing_audit_publish(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    delay = Mock()
+    monkeypatch.setattr("audit.services.audit_queue_service.record_outgoing_event.delay", delay)
+    return delay
+
+
+# SmtpClient's queue is shared per process, so one test's broker-failure pause would leak.
+@pytest.fixture(autouse=True)
+def fresh_smtp_audit_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(SmtpClient, "audit_queue", AuditQueueService())
 
 
 @pytest.fixture

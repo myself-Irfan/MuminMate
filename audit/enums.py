@@ -8,6 +8,10 @@ class EventType(models.TextChoices):
     RESPONSE = "RESPONSE"
 
 
+class Partner(models.TextChoices):
+    EMAIL = "EMAIL"
+
+
 # Set on the request by audit.signals, read when the response row is built.
 class RequestAttribute(StrEnum):
     ERROR = "_audit_error"

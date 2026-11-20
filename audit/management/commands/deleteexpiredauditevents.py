@@ -6,7 +6,7 @@ from audit.services.audit_event_service import AuditEventService
 
 
 class Command(BaseCommand):
-    help = "Delete request audit events older than DJANGO_AUDIT_RETENTION_DAYS."
+    help = "Delete incoming and outgoing audit events older than DJANGO_AUDIT_RETENTION_DAYS."
 
     def handle(self, *args: Any, **options: Any) -> None:
         deleted = AuditEventService().delete_expired()

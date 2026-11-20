@@ -1,10 +1,11 @@
+from collections.abc import Callable
 from time import monotonic
 from typing import Any
 
 import structlog
 from kombu.exceptions import OperationalError
 
-from audit.tasks import record_incoming_event
+from audit.tasks import record_incoming_event, record_outgoing_event
 
 logger = structlog.get_logger(__name__)
 
@@ -16,12 +17,18 @@ class AuditQueueService:
     def __init__(self) -> None:
         self._paused_until = 0.0
 
-    # A blocked broker makes each publish wait ~4 s: after a failure, drop rows for a while instead.
     def queue_incoming_event(self, event: dict[str, Any]) -> None:
+        self._queue(record_incoming_event.delay, event)
+
+    def queue_outgoing_event(self, event: dict[str, Any]) -> None:
+        self._queue(record_outgoing_event.delay, event)
+
+    # A blocked broker makes each publish wait ~4 s: after a failure, drop rows for a while instead.
+    def _queue(self, publish: Callable[[dict[str, Any]], object], event: dict[str, Any]) -> None:
         if monotonic() < self._paused_until:
             return
         try:
-            record_incoming_event.delay(event)
+            publish(event)
         except OperationalError:
             self._paused_until = monotonic() + self.publish_pause_seconds
             logger.exception("audit_event_queue_failed", event_type=event["type"])
